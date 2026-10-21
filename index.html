@@ -491,7 +491,7 @@ const DEFAULT_SETTINGS={
  speedExpo:90,
  curSeason:'2026-27', seasons:{'2026-27':{id:'2026-27',label:'2026/27',start:'2026-09-07'}}, accent:'blu', owner:{name:'',role:'',logo:''},
  accMode:'fasce', growthThr:7.2, wellLow:2, benchCm:null,
- gsheet:{id:'1q9oMPIDVT7d5cAWKCctDXBvs6dgyCn7cS0mnJlhwSbk',range:"'Risposte del modulo 1'!B2:F",mins:"'Allenamento del giorno'!P7:Q400"},
+ gsheet:{id:'1q9oMPIDVT7d5cAWKCctDXBvs6dgyCn7cS0mnJlhwSbk',range:"'Risposte del modulo 1'!A2:F",mins:"'Allenamento del giorno'!P7:Q400"},
  plan:{'MD+1':{dist:30,d2025:5,d25:5,hid:20},'MD+2':{dist:55,d2025:20,d25:10,hid:50},'MD+3':{dist:65,d2025:25,d25:15,hid:90},'MD-4':{dist:65,d2025:25,d25:15,hid:90},'MD-3':{dist:80,d2025:55,d25:30,hid:80},'MD-2':{dist:60,d2025:40,d25:35,hid:65},'MD-1':{dist:35,d2025:15,d25:20,hid:40},'Extra':{dist:40,d2025:20,d25:15,hid:40}},
  modules:Object.fromEntries(MODULES.map(m=>[m.id,true])),
 };
@@ -1847,14 +1847,17 @@ async function syncGSheet(){
  if(!mcp){S.ui.wSyncMsg='Collegamento ai connettori non disponibile in questa vista (apri l’app da claude.ai).';render();return}
  const G=S.settings.gsheet;
  try{
-  const r=await mcp.callTool('Google Sheets','get_values',{spreadsheetId:G.id,range:G.range});const vals=(r.payload||{}).values||[];
+  const r=await mcp.callTool('Google Sheets','get_values',{spreadsheetId:G.id,range:String(G.range).replace(/!B2:F$/,'!A2:F')});const vals=(r.payload||{}).values||[];
   let mins=[];try{const r2=await mcp.callTool('Google Sheets','get_values',{spreadsheetId:G.id,range:G.mins});mins=(r2.payload||{}).values||[]}catch(e){}
   const res=applyFormRows(vals,mins);S.ui.wSyncMsg=`Fatto: ${res.w} wellness e ${res.r} RPE · ${res.skip} righe non riconosciute · ${new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;
  }catch(e){S.ui.wSyncMsg={needs_reauth:'Ricollega Google Sheets in claude.ai → Impostazioni → Connettori.',server_not_connected:'Aggiungi il connettore Google Sheets in claude.ai → Impostazioni → Connettori.',not_in_manifest:'Hai negato l’accesso a Google Sheets per questa app: riattivalo dal menu Autorizzazioni dell’app.',approval_required:'Serve la tua autorizzazione: claude.ai la chiede quando apri l’app lì.',tool_error:'Google Sheets ha risposto con un errore: controlla l’ID del foglio.'}[e?.code]||('Non riuscito ('+(e?.code||'errore')+'). Riprova tra poco.')}
  render();
 }
+const MESI_IT=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+function isTsCell(c){c=String(c??'');return /^\d{1,2}\/\d{1,2}\/\d{4}\s+\d/.test(c)||/\d{4}\s+alle\s+ore/i.test(c)||/^\d{4}-\d\d-\d\d[T ]\d/.test(c)}
+function tsDate(c){c=String(c??'');let m=c.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;m=normH(c).match(/(\d{1,2})\s+([a-z]+)\s+(\d{4})/);if(m&&MESI_IT.includes(m[2]))return `${m[3]}-${String(MESI_IT.indexOf(m[2])+1).padStart(2,'0')}-${m[1].padStart(2,'0')}`;m=c.match(/^(\d{4})-(\d\d)-(\d\d)/);return m?`${m[1]}-${m[2]}-${m[3]}`:null}
 function applyFormRows(vals,mins){let w=0,r=0,skip=0;const touched=new Set();const lo='2026-08-20',hi=d2s(new Date());
- for(const row of vals){if(!row||row.length<3)continue;const pid=nameMatch(row[0]);const d=seasonYearDate(row[1]);if(!pid||!d||d<lo||d>hi){skip++;continue}const wk=weekOfDate(d);const W=S.wellness[wk]=S.wellness[wk]||{wk,days:{},mins:{}};const o=(W.days[d]=W.days[d]||{})[pid]=W.days[d]?.[pid]||{};
+ for(let row of vals){if(!row||row.length<3)continue;let ts=null;if(isTsCell(row[0])){ts=tsDate(row[0]);row=row.slice(1)}const pid=nameMatch(row[0]);let d=seasonYearDate(row[1]);if(ts&&(!d||d<lo||d>hi||Math.abs(s2d(d)-s2d(ts))>3*864e5))d=ts;if(!pid||!d||d<lo||d>hi){skip++;continue}const wk=weekOfDate(d);const W=S.wellness[wk]=S.wellness[wk]||{wk,days:{},mins:{}};const o=(W.days[d]=W.days[d]||{})[pid]=W.days[d]?.[pid]||{};
   if(String(row[2]).startsWith('Wellness')&&row[3]){o.rec=parseInt(row[3]);w++}else if(String(row[2]).startsWith('RPE')&&row[4]){o.rpe=parseInt(row[4]);r++}touched.add(wk)}
  for(const m of mins){const d=seasonYearDate(m[0]);const v=num(m[1]);if(!d||v==null)continue;const wk=weekOfDate(d);const W=S.wellness[wk]=S.wellness[wk]||{wk,days:{},mins:{}};W.mins=W.mins||{};W.mins[d]=v;touched.add(wk)}
  touched.forEach(saveWell);invalidate();return {w,r,skip}}
@@ -2270,6 +2273,9 @@ document.addEventListener('click',ev=>{const t=ev.target.closest('[data-mopen],[
 /* chiude la scheda quando si cambia pagina o scheda */
 {const _go=go;go=function(v,...a){if(v!=='partite')S.ui.match=null;return _go(v,...a)}}
 document.addEventListener('click',ev=>{const t=ev.target.closest('[data-tab]');if(t&&S.ui.view==='partite')S.ui.match=null},true);
+
+/* primo avvio (versione installata vuota): carica il backup in un tocco */
+{const _today=V4.today;V4.today=()=>{if(players().length)return _today();return `<section class="hero"><span class="eyebrow">Primo avvio</span><h2>Carica i dati della squadra</h2><p>L’app su questo dispositivo è vuota. Scegli il file di backup <b>ElevenLab_backup….json</b>: arrivano in un passaggio rosa, sedute GPS, calendario e minutaggio, test fisici, misure e recupero.</p><div class="row" style="margin-top:14px"><label class="btn pri">Carica il backup<input type="file" id="impJson" accept=".json,application/json" hidden></label><button class="btn" data-nav="importa">Oppure importa il foglio Excel</button></div><p class="hint" style="margin-top:10px">I dati restano solo su questo dispositivo. Per aggiornarli, scarica un nuovo backup dall’app su claude.ai (Dati → Importa → Backup ed export) e ricaricalo qui.</p></section>`}}
 
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
