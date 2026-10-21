@@ -422,6 +422,13 @@ td.best{color:var(--accent-2);font-weight:800}
 .wkb-c{color:var(--muted);transition:transform .2s}.wkb.open .wkb-c{transform:rotate(180deg)}
 .wkt tr.refr td{background:var(--accent-soft);font-weight:700}.wkt tr.pctr td{font-weight:700}
 @media (max-width:760px){.wkb-h{grid-template-columns:1fr auto;grid-template-areas:"t c" "r r" "s s"}.wkb-t{grid-area:t}.wkb-r{grid-area:r}.wkb-s{grid-area:s}.wkb-c{grid-area:c}}
+
+.txr{display:grid;grid-template-columns:44px 1fr 44px;gap:10px;align-items:center;margin:0 0 9px;font-family:var(--f-mono);font-size:13px}
+.txr b:last-child{text-align:right}
+.txb{position:relative;display:flex;justify-content:space-between;height:22px;border-radius:6px;background:var(--sunk);overflow:hidden}
+.txb i{display:block;height:100%;background:rgba(57,135,229,.55)}
+.txb i.a{background:rgba(217,89,38,.55)}
+.txb span{position:absolute;inset:0;display:grid;place-items:center;font:700 11.5px/1 var(--f-body);color:var(--ink);letter-spacing:.02em}
 </style>
 
 <div class="app">
@@ -2378,6 +2385,89 @@ refBlockLabel=function(r){if(!r)return '<span class="muted">nessuna partita prec
 refNoteTxt=function(pid,w,r){const thr=S.settings.ref.minMin??45;if(r.borrow?.team)return `In quella partita ha giocato ${fmt(r.played)}′ (meno di ${thr}′) e nessun compagno del suo ruolo ha superato i ${thr}′: uso la media dei giocatori di movimento, riportata a 90′.`;
  if(r.borrow)return `In quella partita ha giocato ${fmt(r.played)}′ (meno di ${thr}′): come riferimento uso ${pName(r.borrow.p)}, stesso ruolo, ${fmt(r.borrow.min)}′${r.scaled>1?', riportati a 90′':''}.`;
  if(r.scaled>1)return `Ha giocato ${fmt(r.played)}′: i valori della partita sono riportati a 90′ (× ${fmt(r.scaled,2)}) prima di calcolare le percentuali.`;return r.note||''};
+
+/* ===================== TACTICALXG STUDIO → ELEVEN LAB ===================== */
+const TXG_C=[['gol_live','Gol'],['occasioni','Occasioni'],['tiri_16','Tiri in area'],['tiri_fuori','Tiri da fuori'],['ingressi_area','Ingressi in area'],['cross_14','Cross 1/4'],['cross_34','Cross 3/4'],['corner','Calci d’angolo'],['punizione','Punizioni'],['dribbling','Dribbling'],['fuorigioco','Fuorigioco']];
+const TXG_O={gol:'Gol',parato:'Parati',murato:'Murati',fuori:'Fuori',palo:'Palo',traversa:'Traversa'};
+function txgPlayer(name){const t=normH(name).replace(/[^a-z ]/g,' ').split(' ').filter(x=>x.length>2);if(!t.length)return null;let best=null,bs=0;
+ for(const p of Object.values(S.roster.players||{})){const pt=normH([p.name,...(p.aliases||[])].join(' ')).replace(/[^a-z ]/g,' ').split(' ').filter(x=>x.length>2);let s=0;for(const a of t)for(const b of pt){if(a===b)s=Math.max(s,3);else if(a.length>3&&b.length>3&&lev(a,b)<=(Math.min(a.length,b.length)>=8?3:2))s=Math.max(s,2)}if(s>bs){bs=s;best=p.id}}return bs>=2?best:null}
+function txgSummary(id,m){const sh=m.shots||[];const side=t=>{const l=sh.filter(s=>s.team===t);const o={tot:l.length,xg:+l.reduce((a,s)=>a+(+s.xg||0),0).toFixed(2),gol:l.filter(s=>s.outcome==='gol').length,porta:l.filter(s=>s.outcome==='gol'||s.outcome==='parato').length,esiti:{},azioni:{},zone:{},tempo:{1:{n:0,xg:0},2:{n:0,xg:0}}};
+  for(const s of l){o.esiti[s.outcome]=(o.esiti[s.outcome]||0)+1;o.azioni[s.actionType]=(o.azioni[s.actionType]||0)+1;o.zone[s.zone]=(o.zone[s.zone]||0)+1;const tp=String(s.tempo)==='2'?2:1;o.tempo[tp].n++;o.tempo[tp].xg=+(o.tempo[tp].xg+(+s.xg||0)).toFixed(2)}return o};
+ const pl={};for(const s of sh.filter(s=>s.team==='n'&&s.player&&s.player!=='—')){const k=s.player.trim();pl[k]=pl[k]||{name:k,p:txgPlayer(k),sh:0,gol:0,xg:0,porta:0};pl[k].sh++;pl[k].xg=+(pl[k].xg+(+s.xg||0)).toFixed(2);if(s.outcome==='gol')pl[k].gol++;if(s.outcome==='gol'||s.outcome==='parato')pl[k].porta++}
+ const counters={};for(const [k] of TXG_C){const c=m.counters?.[k];if(c)counters[k]={n:+c.n||0,a:+c.a||0}}
+ return {id,opp:m.teamA||'',n:side('n'),a:side('a'),counters,players:Object.values(pl).sort((a,b)=>b.xg-a.xg),formation:m.lineupN?.enabled?m.lineupN.formation:'',video:m.video?.name||'',at:new Date().toISOString()}}
+function txgPropose(sum,used){const cands=calMatches().filter(c=>sameTeam(c.opp,sum.opp));if(!cands.length)return '';
+ const played=cands.filter(c=>matchScore(c));const exact=played.find(c=>{const s=matchScore(c);return s.gf===sum.n.gol&&s.ga===sum.a.gol&&!used.has(c.id)});if(exact)return exact.id;
+ const linked=cands.find(c=>c.txg?.id===sum.id);if(linked)return linked.id;const free=played.filter(c=>!used.has(c.id));return (free[free.length-1]||played[played.length-1]||cands[0]).id}
+function txgParse(text){let d;try{d=JSON.parse(text)}catch(e){throw new Error('Il file non è un JSON valido.')}
+ if(!d||!d.matches||typeof d.matches!=='object')throw new Error('Non sembra un backup di TacticalXG Studio (manca l’elenco delle partite).');
+ const out=[];const used=new Set();for(const [id,m] of Object.entries(d.matches)){const sum=txgSummary(id,m);const empty=!sum.n.tot&&!sum.a.tot&&!Object.values(sum.counters).some(c=>c.n||c.a);sum.empty=empty;sum.to=empty?'':txgPropose(sum,used);if(sum.to)used.add(sum.to);out.push(sum)}return {project:d.project?.name||'',list:out}}
+function txgOptLabel(c){return `G${c.g??''} · ${dShort(c.date)} · ${c.opp}${c.res?' '+c.res:''}`}
+let txgPreview=function(){const T=S.ui.txg;if(!T)return '';const cal=calMatches();const n=T.list.filter(s=>s.to).length;
+ return `<section class="card"><div class="card-h"><h2>Partite trovate nel backup${T.project?` · ${esc(T.project)}`:''}</h2><span class="sub">Controlla l’abbinamento con il calendario e poi importa.</span></div><div class="card-b flush"><div class="tw"><table class="t"><thead><tr><th>TacticalXG</th><th class="n">Tiri</th><th class="n">xG</th><th class="n">Gol</th><th>Partita in calendario</th><th></th></tr></thead><tbody>
+ ${T.list.map((s,i)=>{const c=S.calendar.matches?.[s.to];const sc=c&&matchScore(c);const warn=sc&&(sc.gf!==s.n.gol||sc.ga!==s.a.gol);return `<tr><td><b>${esc(s.opp)}</b>${s.formation?` <span class="hint">${esc(s.formation)}</span>`:''}${s.video?`<div class="hint">${esc(s.video)}</div>`:''}</td><td class="n">${s.n.tot}–${s.a.tot}</td><td class="n">${fmt(s.n.xg,2)}–${fmt(s.a.xg,2)}</td><td class="n">${s.n.gol}–${s.a.gol}</td>
+  <td>${s.empty?'<span class="hint">Partita vuota: non viene importata</span>':`<select class="inp" data-txgto="${i}"><option value="">Non importare</option>${cal.map(x=>`<option value="${x.id}" ${x.id===s.to?'selected':''}>${esc(txgOptLabel(x))}</option>`).join('')}</select>`}</td>
+  <td>${warn?`<span class="chip under" data-tip="Il risultato in calendario è ${esc(c.res)}: controlla i gol registrati in TacticalXG">gol ≠ risultato</span>`:c&&!s.empty?'<span class="chip ok">ok</span>':''}</td></tr>`}).join('')}
+ </tbody></table></div></div><div class="card-b row"><button class="btn pri" id="txgDo" ${n?'':'disabled'}>Importa ${n} partit${n===1?'a':'e'}</button><button class="btn ghost" id="txgCancel">Annulla</button><span class="hint">Sovrascrive xG e tiri già inseriti per quelle partite; il possesso resta il tuo.</span></div></section>`}
+{const _tt=V4.tattica;V4.tattica=()=>`<section class="card"><div class="card-h"><h2>Importa da TacticalXG Studio</h2><span class="sub">Scegli il backup (.json) del progetto: xG, tiri, occasioni, cross, corner e tiratori finiscono nella scheda di ogni partita.</span></div><div class="card-b row"><label class="btn pri">Scegli il backup TacticalXG<input type="file" id="txgFile" accept=".json,application/json" hidden></label>${S.ui.txgMsg?`<span class="hint">${esc(S.ui.txgMsg)}</span>`:''}</div></section>${txgPreview()}`+_tt().replace(/<div class="note">[^]*?<\/div>/,'')}
+document.addEventListener('change',async ev=>{const t=ev.target;
+ if(t.id==='txgFile'&&t.files?.[0]){try{S.ui.txg=txgParse(await t.files[0].text());S.ui.txgMsg='';}catch(e){S.ui.txg=null;S.ui.txgMsg=e.message}t.value='';render();return}
+ if(t.dataset?.txgto!=null&&S.ui.txg){S.ui.txg.list[+t.dataset.txgto].to=t.value;render()}});
+document.addEventListener('click',ev=>{const t=ev.target.closest('#txgDo,#txgCancel');if(!t)return;
+ if(t.id==='txgCancel'){S.ui.txg=null;render();return}
+ if(S.ui.readOnly||S.readOnly){toast('Accesso in sola lettura.');return}
+ let n=0;for(const s of S.ui.txg.list){if(!s.to||s.empty)continue;const c=S.calendar.matches[s.to];if(!c)continue;const {to,empty,...sum}=s;c.txg=sum;c.tac={...(c.tac||{}),xgF:sum.n.xg,xgA:sum.a.xg,sh:sum.n.tot,shA:sum.a.tot};n++}
+ saveCalendar();S.ui.txg=null;S.ui.txgMsg=`Importate ${n} partite da TacticalXG · ${new Date().toLocaleString('it-IT',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}`;toast(`Importate ${n} partite da TacticalXG.`);render()});
+
+/* pannello TacticalXG nella scheda partita */
+function txgPanel(c){const x=c.txg;if(!x)return '';const us=TEAM_SHORT(),them=c.opp;const row=(l,a,b,d=0)=>{const A=+a||0,B=+b||0,t=A+B||1;return `<div class="txr"><b>${fmt(A,d)}</b><div class="txb"><i style="width:${A/t*100}%"></i><span>${esc(l)}</span><i class="a" style="width:${B/t*100}%"></i></div><b>${fmt(B,d)}</b></div>`};
+ const es=Object.keys(TXG_O).filter(k=>x.n.esiti[k]||x.a.esiti[k]);
+ return `<section class="card"><div class="card-h"><h2>TacticalXG Studio</h2><span class="sub">${esc(us)} a sinistra · ${esc(them)} a destra${x.formation?` · modulo ${esc(x.formation)}`:''}</span></div><div class="card-b grid g2" style="gap:18px">
+ <div>${row('xG',x.n.xg,x.a.xg,2)}${row('xG 1° tempo',x.n.tempo[1].xg,x.a.tempo[1].xg,2)}${row('xG 2° tempo',x.n.tempo[2].xg,x.a.tempo[2].xg,2)}${row('Tiri',x.n.tot,x.a.tot)}${row('Tiri in porta',x.n.porta,x.a.porta)}${es.map(k=>row('Tiri · '+TXG_O[k].toLowerCase(),x.n.esiti[k]||0,x.a.esiti[k]||0)).join('')}</div>
+ <div>${TXG_C.filter(([k])=>x.counters[k]).map(([k,l])=>row(l,x.counters[k].n,x.counters[k].a)).join('')}</div></div>
+ ${x.players.length?`<div class="card-b flush"><div class="tw"><table class="t"><thead><tr><th>Tiratori ${esc(us)}</th><th class="n">Tiri</th><th class="n">In porta</th><th class="n">Gol</th><th class="n">xG</th><th class="n">xG/tiro</th></tr></thead><tbody>${x.players.map(p=>`<tr ${p.p?`class="click" data-player="${p.p}"`:''}><td class="name">${esc(p.p?pName(p.p):p.name)}</td><td class="n">${p.sh}</td><td class="n">${p.porta}</td><td class="n">${p.gol}</td><td class="n"><b>${fmt(p.xg,2)}</b></td><td class="n">${fmt(p.xg/p.sh,2)}</td></tr>`).join('')}</tbody></table></div></div>`:''}
+ ${matchScore(c)&&(matchScore(c).gf!==x.n.gol||matchScore(c).ga!==x.a.gol)?`<div class="card-b"><div class="note">In TacticalXG risultano ${x.n.gol} gol fatti e ${x.a.gol} subiti, il risultato in calendario è ${esc(c.res)}: controlla se c’è un gol registrato due volte o annullato.</div></div>`:''}</section>`}
+{const _ms=V5.matchSheet;V5.matchSheet=c=>{const h=_ms(c);const k='<section class="card"><div class="card-h"><h2>GPS di squadra';const i=h.indexOf(k);return i<0?h+txgPanel(c):h.slice(0,i)+txgPanel(c)+h.slice(i)}}
+
+/* ===== Collegamento automatico con TacticalXG Studio (app installata, stesso indirizzo viceinfantino-cell.github.io) ===== */
+const TXL_KEY='el-txg-link';
+function txlCfg(){try{return JSON.parse(localStorage.getItem(TXL_KEY)||'null')}catch(e){return null}}
+function txlSet(o){try{o?localStorage.setItem(TXL_KEY,JSON.stringify(o)):localStorage.removeItem(TXL_KEY)}catch(e){}}
+function txlRead(k){try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}}
+function txlProjects(){const p=txlRead('txg_projects_index');return Array.isArray(p)?p:null}
+function txlGuess(ps){return (ps.find(p=>/u\s?-?16|under\s?16/i.test(p.name||''))||ps.find(p=>/s(u|ü)d\s?tirol/i.test(p.name||''))||ps[0])?.id||''}
+function txlSig(s){return JSON.stringify([s.n.tot,s.a.tot,s.n.xg,s.a.xg,s.n.gol,s.a.gol,s.counters,s.players.length])}
+function txlTarget(sum,used){const today=d2s(new Date());const linked=calMatches().find(c=>c.txg?.id===sum.id);if(linked)return {to:linked.id,sure:true};
+ const cands=calMatches().filter(c=>sameTeam(c.opp,sum.opp)&&!used.has(c.id)&&!(c.txg&&c.txg.id!==sum.id));
+ const exact=cands.filter(c=>{const s=matchScore(c);return s&&s.gf===sum.n.gol&&s.ga===sum.a.gol});if(exact.length===1)return {to:exact[0].id,sure:true};
+ const past=cands.filter(c=>c.date<=today);if(past.length===1)return {to:past[0].id,sure:true};
+ return {to:txgPropose(sum,used),sure:false}}
+function txlSync(silent){const L=txlCfg();if(!L?.pid)return;if(S.readOnly){return}
+ const idx=txlRead('txg_matches_index');if(!Array.isArray(idx)){if(!silent){S.ui.txlMsg='Non trovo i dati di TacticalXG in questo browser.';render()}return}
+ const used=new Set(),pend=[];let upd=0,tot=0;
+ for(const it of idx.filter(m=>m.projectId===L.pid)){const m=txlRead('txg_match_'+it.id);if(!m)continue;const sum=txgSummary(it.id,m);if(!sum.n.tot&&!sum.a.tot&&!Object.values(sum.counters).some(c=>c.n||c.a))continue;tot++;
+  const t=txlTarget(sum,used);if(!t.to){pend.push({...sum,to:''});continue}used.add(t.to);
+  if(!t.sure){pend.push({...sum,to:t.to});continue}
+  const c=S.calendar.matches[t.to];const sig=txlSig(sum);if(c.txg?.sig===sig)continue;c.txg={...sum,sig};c.tac={...(c.tac||{}),xgF:sum.n.xg,xgA:sum.a.xg,sh:sum.n.tot,shA:sum.a.tot};upd++}
+ if(upd)saveCalendar();txlSet({...L,last:new Date().toISOString(),n:tot});
+ S.ui.txg=pend.length?{project:L.name,list:pend,link:true}:(S.ui.txg?.link?null:S.ui.txg);
+ S.ui.txlMsg=upd?`Aggiornate ${upd} partit${upd===1?'a':'e'} da TacticalXG.`:'';if(upd&&!silent)toast(S.ui.txlMsg);else if(upd)toast(S.ui.txlMsg);
+ if(S.ui.view==='partite'||!silent)render()}
+function txlCard(){const L=txlCfg();const ps=txlProjects();const here=inClaude();
+ if(L?.pid)return `<section class="card"><div class="card-h"><h2>Collegata a TacticalXG Studio</h2><span class="sub">Progetto <b>${esc(L.name||'')}</b> · ${L.n??0} partite analizzate${L.last?` · ultimo controllo ${new Date(L.last).toLocaleString('it-IT',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}`:''}</span></div><div class="card-b row"><span class="chip ok">Collegamento attivo</span><span class="hint" style="flex:1">Ogni tiro o conteggio che salvi in TacticalXG arriva qui da solo: all’apertura dell’app e, se le hai aperte tutte e due, in tempo reale.</span><button class="btn" id="txlNow">Aggiorna ora</button><button class="btn ghost" id="txlOff">Scollega</button>${S.ui.txlMsg?`<span class="hint">${esc(S.ui.txlMsg)}</span>`:''}</div></section>`;
+ if(ps&&ps.length)return `<section class="card"><div class="card-h"><h2>Collega TacticalXG Studio</h2><span class="sub">Ho trovato TacticalXG su questo dispositivo. Scegli il progetto e premi Collega: da quel momento le partite si aggiornano da sole.</span></div><div class="card-b row"><label class="field" style="min-width:260px">Progetto<select class="inp" id="txlPid">${ps.map(p=>`<option value="${esc(p.id)}" ${p.id===txlGuess(ps)?'selected':''}>${esc(p.name||p.id)}</option>`).join('')}</select></label><button class="btn pri" id="txlOn" style="align-self:flex-end">Collega</button></div></section>`;
+ return `<section class="card"><div class="card-h"><h2>Collega TacticalXG Studio</h2></div><div class="card-b"><div class="note">${here?'Il collegamento automatico funziona nell’<b>app installata</b> (viceinfantino-cell.github.io/ElevenLab), perché sta allo stesso indirizzo di TacticalXG Studio. Qui su claude.ai usa il backup qui sotto.':'Non trovo TacticalXG Studio in questo browser. Apri una volta <b>viceinfantino-cell.github.io/TacticalXG-Studio</b> nello <b>stesso browser</b> in cui hai installato Eleven Lab (es. Chrome), poi torna qui: comparirà il pulsante Collega.'}</div></div></section>`}
+{const _t2=V4.tattica;V4.tattica=()=>txlCard()+_t2()}
+/* l'anteprima abbinamenti usata dal collegamento ha un titolo diverso */
+{const _pv=txgPreview;txgPreview=function(){const h=_pv();return S.ui.txg?.link?h.replace('Partite trovate nel backup','Partite di TacticalXG da abbinare'):h}}
+document.addEventListener('click',ev=>{const t=ev.target.closest('#txlOn,#txlOff,#txlNow');if(!t)return;
+ if(t.id==='txlOn'){const ps=txlProjects()||[];const pid=$('#txlPid').value;const p=ps.find(x=>x.id===pid);txlSet({pid,name:p?.name||pid});txlSync(false);toast('TacticalXG collegato.');render();return}
+ if(t.id==='txlOff'){txlSet(null);if(S.ui.txg?.link)S.ui.txg=null;S.ui.txlMsg='';render();return}
+ if(t.id==='txlNow'){txlSync(false);if(!S.ui.txlMsg)S.ui.txlMsg='Nessuna novità: tutto già aggiornato.';render()}});
+/* aggiornamento automatico */
+setTimeout(()=>{if(txlCfg()&&players().length)txlSync(true)},3000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&txlCfg())setTimeout(()=>txlSync(true),600)});
+let _txlT=null;addEventListener('storage',e=>{if(!txlCfg()||!e.key||!/^txg_(match_|matches_index)/.test(e.key))return;clearTimeout(_txlT);_txlT=setTimeout(()=>txlSync(true),1500)});
 
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
