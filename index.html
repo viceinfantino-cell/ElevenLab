@@ -2277,6 +2277,36 @@ document.addEventListener('click',ev=>{const t=ev.target.closest('[data-tab]');i
 /* primo avvio (versione installata vuota): carica il backup in un tocco */
 {const _today=V4.today;V4.today=()=>{if(players().length)return _today();return `<section class="hero"><span class="eyebrow">Primo avvio</span><h2>Carica i dati della squadra</h2><p>L’app su questo dispositivo è vuota. Scegli il file di backup <b>ElevenLab_backup….json</b>: arrivano in un passaggio rosa, sedute GPS, calendario e minutaggio, test fisici, misure e recupero.</p><div class="row" style="margin-top:14px"><label class="btn pri">Carica il backup<input type="file" id="impJson" accept=".json,application/json" hidden></label><button class="btn" data-nav="importa">Oppure importa il foglio Excel</button></div><p class="hint" style="margin-top:10px">I dati restano solo su questo dispositivo. Per aggiornarli, scarica un nuovo backup dall’app su claude.ai (Dati → Importa → Backup ed export) e ricaricalo qui.</p></section>`}}
 
+/* ===== Google Form anche nell'app installata (GitHub): Apps Script con codice segreto ===== */
+const GF_KEY='el-gform';
+function gfCfg(){try{return JSON.parse(localStorage.getItem(GF_KEY)||'null')||{}}catch(e){return {}}}
+function gfSave(o){try{localStorage.setItem(GF_KEY,JSON.stringify({...gfCfg(),...o}))}catch(e){}}
+const inClaude=()=>!!window.claude?.use;
+async function syncViaScript(silent){const c=gfCfg();if(!c.url||!c.token){if(!silent){S.ui.wSyncMsg='Inserisci prima indirizzo e codice dello script (qui sotto).';render()}return false}
+ if(!silent){S.ui.wSyncMsg='Leggo il Google Form…';render()}
+ try{const u=c.url.trim()+(c.url.includes('?')?'&':'?')+'token='+encodeURIComponent(c.token.trim());const r=await fetch(u,{redirect:'follow'});const j=await r.json();if(j.error)throw new Error(j.error==='token'?'Codice sbagliato: controlla che sia uguale a quello nello script.':j.error);
+  const res=applyFormRows(j.values||[],j.mins||[]);const t=new Date();gfSave({last:t.toISOString()});S.ui.wSyncMsg=`Fatto: ${res.w} wellness e ${res.r} RPE · ${t.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;if(!silent)toast('Wellness e RPE aggiornati dal Google Form.');render();return true}
+ catch(e){S.ui.wSyncMsg='Non riesco a leggere il Form: '+(e.message&&!/Failed to fetch|JSON/.test(e.message)?e.message:'controlla l’indirizzo dello script e che sia pubblicato per “Chiunque”.');if(!silent)render();return false}}
+{const _sync=syncGSheet;syncGSheet=async function(){if(!inClaude())return syncViaScript(false);return _sync()}}
+/* aggiornamento automatico all'apertura e quando l'app torna in primo piano (solo versione installata) */
+function gfAuto(){if(inClaude()||!players().length)return;const c=gfCfg();if(!c.url||!c.token)return;if(c.last&&Date.now()-new Date(c.last)<20*60e3)return;syncViaScript(true)}
+setTimeout(gfAuto,2500);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(gfAuto,800)});
+
+V3.wSync=()=>{const G=S.settings.gsheet;const last=S.ui.wSyncMsg||'';const c=gfCfg();const here=inClaude();
+ return `<section class="card"><div class="card-h"><h2>Google Form collegato</h2><span class="sub">“Database U16: RPE e Qualità del Recupero”</span></div><div class="card-b" style="display:flex;flex-direction:column;gap:12px">
+ <p style="margin:0;color:var(--ink-2)">Il pulsante legge le risposte del Form e aggiorna recupero e RPE. I nomi vengono riconosciuti anche scritti male o al contrario; se un ragazzo sbaglia la data, vale quella di invio del Form.</p>
+ <div class="row"><button class="btn pri" id="wSync">Aggiorna ora dal Google Form</button><span class="hint">${esc(last||(c.last&&!here?'Ultimo aggiornamento: '+new Date(c.last).toLocaleString('it-IT',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''))}</span></div>
+ ${here?`<div class="note">Qui su claude.ai il collegamento passa dal connettore Google Sheets: non devi configurare altro.</div><label class="field">ID del foglio<input class="inp" data-settxt="gsheet.id" value="${esc(G.id)}"></label>`:
+ `<div class="note">Nell’app installata il Form arriva tramite un piccolo script nel tuo Google Sheet. Una volta inseriti indirizzo e codice, le risposte si aggiornano <b>da sole</b> ogni volta che apri l’app.</div>`}
+ </div></section>
+ ${here?'':`<section class="card"><div class="card-h"><h2>Collegamento per l’app installata</h2><span class="sub">Su ogni dispositivo (Mac, iPad, telefono) inserisci una volta indirizzo e codice. Restano solo su quel dispositivo.</span></div><div class="card-b" style="display:flex;flex-direction:column;gap:12px">
+ <label class="field">Indirizzo dello script (finisce con /exec)<input class="inp" id="gfUrl" value="${esc(c.url||'')}" placeholder="https://script.google.com/macros/s/…/exec"></label>
+ <label class="field">Codice segreto<input class="inp" id="gfTok" value="${esc(c.token||'')}" placeholder="il codice scritto nello script" autocomplete="off"></label>
+ <div class="row"><button class="btn" id="gfSave">Salva e prova</button>${c.url?'<button class="btn ghost" id="gfDel">Scollega</button>':''}</div></div></section>`}`};
+document.addEventListener('click',async ev=>{const t=ev.target.closest('#gfSave,#gfDel');if(!t)return;
+ if(t.id==='gfDel'){try{localStorage.removeItem(GF_KEY)}catch(e){}S.ui.wSyncMsg='Scollegato.';render();return}
+ gfSave({url:$('#gfUrl').value.trim(),token:$('#gfTok').value.trim()});await syncViaScript(false)});
+
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
 document.addEventListener('click',e=>{
