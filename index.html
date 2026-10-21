@@ -433,6 +433,11 @@ td.best{color:var(--accent-2);font-weight:800}
 .tact td.pc{white-space:nowrap}.tact td.pc b{font-weight:800}.tact td.pc span{color:var(--muted);margin:0 3px}
 .tact td.pc b.up{color:var(--st-ok-ink)}.tact td.pc b.down{color:var(--st-over-ink)}
 details.card>summary{list-style:none}details.card>summary::-webkit-details-marker{display:none}
+
+.srpe th.sday{vertical-align:top;min-width:78px}.srpe th.sday>div{font-weight:800}
+.durin{display:inline-flex;align-items:center;gap:2px;margin-top:4px}.durin input{width:44px;text-align:right;padding:2px 4px}
+.srpe th small{display:block;font-size:9.5px;letter-spacing:.04em;text-transform:none;font-weight:600;margin-top:2px}
+.srpe td small.sub2{display:block;font-size:10px;color:var(--muted);margin-top:2px;font-family:var(--f-mono)}
 </style>
 
 <div class="app">
@@ -2503,6 +2508,49 @@ V5.tacBody=()=>{const today=d2s(new Date());const cs=calMatches().filter(c=>c.da
  ${cs.some(c=>!c.txg)?`<details class="card"><summary class="card-h" style="cursor:pointer"><h2>Inserimento a mano</h2><span class="sub">Solo per le partite non analizzate in TacticalXG: xG e tiri.</span></summary><div class="card-b flush"><div class="tw"><table class="t"><thead><tr><th>Partita</th>${TAC.map(([,l])=>`<th class="n">${l}</th>`).join('')}</tr></thead><tbody>${cs.filter(c=>!c.txg).map(c=>`<tr><td><b>G${c.g??''} ${esc(c.opp)}</b> <span class="muted">${dShort(c.date)}</span></td>${TAC.map(([k])=>`<td class="n"><input class="ni" style="width:62px" data-tac="${c.id}|${k}" value="${c.tac?.[k]??''}" inputmode="decimal"></td>`).join('')}</tr>`).join('')}</tbody></table></div></div></details>`:''}`};
 function txgImportCard(){return `<section class="card"><div class="card-h"><h2>${txlCfg()?'Oppure importa un backup':'Importa da TacticalXG Studio'}</h2><span class="sub">Scegli il backup (.json) del progetto: tutti i dati raccolti finiscono nella scheda di ogni partita.</span></div><div class="card-b row"><label class="btn ${txlCfg()?'':'pri'}">Scegli il backup TacticalXG<input type="file" id="txgFile" accept=".json,application/json" hidden></label>${S.ui.txgMsg?`<span class="hint">${esc(S.ui.txgMsg)}</span>`:''}</div></section>`}
 V4.tattica=()=>txlCard()+txgImportCard()+txgPreview()+V5.tacBody();
+
+/* ===================== CARICO INTERNO: sRPE = RPE × minuti della seduta =====================
+   la durata della seduta si inserisce una volta per giorno e vale per tutti i giocatori;
+   nei giorni di partita si usano i minuti giocati da ciascuno (Minutaggio). */
+const DOW=['lun','mar','mer','gio','ven','sab','dom'];
+function sessDur(date){return memo('sd:'+date,()=>{const W=S.wellness[weekOfDate(date)];const man=num(W?.dur?.[date]);if(man!=null)return {min:man,src:'app'};
+ const g=allEntries().filter(e=>e.date===date&&e.kind==='training').map(e=>val(e,'min')).filter(v=>v);if(g.length)return {min:Math.round(mean(g)),src:'gps',n:g.length};
+ const fm=num(W?.mins?.[date]);if(fm!=null)return {min:fm,src:'form'};return {min:null,src:''}})}
+function matchOn(date){return calMatches().find(c=>c.date===date)||null}
+function srpeDay(pid,date){return memo(`sr:${pid}:${date}`,()=>{const w=wellOf(pid,date);const rpe=num(w?.rpe);if(rpe==null)return null;const c=matchOn(date);
+ if(c){const e=allEntries().find(x=>x.p===pid&&x.date===date&&x.kind==='match');const pm=playedMin(e,pid,date);return {rpe,min:pm.min,v:rpe*pm.min,match:true}}
+ const d=sessDur(date);if(d.min==null)return {rpe,min:null,v:null};return {rpe,min:d.min,v:rpe*d.min,src:d.src}})}
+function srpeRange(pid,from,to){let s=0,n=0;for(let d=from;d<=to;d=addDays(d,1)){const x=srpeDay(pid,d);if(x?.v!=null){s+=x.v;n++}}return {s,n}}
+function srpeWeek(pid,wk){return memo(`srw:${pid}:${wk}`,()=>{const a=weekStart(wk);const days=DOW.map((_,i)=>srpeDay(pid,addDays(a,i)));const L=days.map(x=>x?.v??0);const has=days.some(x=>x?.v!=null);if(!has)return null;
+ const tot=L.reduce((x,y)=>x+y,0);const mu=tot/7,sdv=Math.sqrt(L.reduce((x,y)=>x+(y-mu)**2,0)/7);const mono=sdv?mu/sdv:null;
+ const today=d2s(new Date());const end=addDays(a,6)<today?addDays(a,6):today;const ac=srpeRange(pid,addDays(end,-6),end).s;const ch=srpeRange(pid,addDays(end,-27),end);const acwr=ch.n>=8&&ch.s?ac/(ch.s/4):null;
+ const rp=days.map(x=>x?.rpe).filter(v=>v!=null);const live=addDays(a,6)>=today;return {days,tot,mono:live?null:mono,strain:live||mono==null?null:tot*mono,acwr,rpe:rp.length?mean(rp):null,live}})}
+function srpeCls(v){if(v==null)return '';return v>700?'over':v>400?'under':'ok'}
+V2.interno=()=>{const wk=S.ui.wk;const a=weekStart(wk);const dates=DOW.map((_,i)=>addDays(a,i));const ro=!!S.readOnly;
+ const rows=players().map(p=>({p,w:srpeWeek(p.id,wk)})).filter(r=>r.w).sort((x,y)=>y.w.tot-x.w.tot);
+ const anyR=dates.some(d=>players().some(p=>wellOf(p.id,d)?.rpe!=null));
+ const mxDay=Math.max(1,...rows.flatMap(r=>r.w.days.map(x=>x?.v||0)));
+ const head=dates.map(d=>{const c=matchOn(d);const sd=sessDur(d);const nR=players().filter(p=>wellOf(p.id,d)?.rpe!=null).length;
+  return `<th class="n sday"><div>${DOW[s2d(d).getDay()===0?6:s2d(d).getDay()-1]} ${s2d(d).getDate()}</div>${c?`<span class="tag match" data-tip="Si usano i minuti giocati da ciascuno">vs ${esc(c.opp.slice(0,10))}</span>`:nR?`<label class="durin"><input class="ni" data-sdur="${d}" value="${sd.src==='app'?sd.min:''}" placeholder="${sd.min??'min'}" inputmode="numeric" ${ro?'disabled':''}>′</label><small class="muted">${sd.src==='app'?'inserita':sd.src==='form'?'dal Form':sd.src==='gps'?`media GPS · ${sd.n} gioc.`:'manca'}</small>`:'<small class="muted">riposo</small>'}</th>`}).join('');
+ // squadra: andamento settimanale
+ const wks=weeksWithData().concat([wk]).filter((v,i,s)=>s.indexOf(v)===i&&v<=wk).sort((x,y)=>x-y).slice(-10);
+ const teamW=wks.map(w=>{const v=players().map(p=>srpeWeek(p.id,w)?.tot).filter(x=>x);return v.length?mean(v):null});
+ const teamD=dates.map(d=>{const v=players().map(p=>srpeDay(p.id,d)?.v).filter(x=>x!=null);return v.length?mean(v):null});
+ return `<div class="note">sRPE (Foster) = <b>RPE del Form × minuti</b>. La durata della seduta è la <b>media dei minuti GPS dei giocatori caricati</b> quel giorno e vale per tutti, anche per chi non ha il GPS. Se in un giorno non c’è il GPS uso i minuti del Google Sheet; puoi sempre correggerla a mano scrivendola sopra il giorno. Nei giorni di partita valgono i minuti giocati da ciascuno.</div>
+ ${!anyR?`<section class="card"><div class="empty"><b>Nessun RPE in questa settimana</b>Aggiorna il Google Form da Salute → Wellness → Collegamento Form.</div></section>`:`
+ <div class="kpis"><div class="kpi tone-acc"><span>sRPE medio squadra</span><b>${fmt(rows.length?mean(rows.map(r=>r.w.tot)):null)}<small> UA</small></b><small>${rows.length} giocatori con RPE</small></div>
+ <div class="kpi"><span>RPE medio</span><b>${fmt(mean(rows.map(r=>r.w.rpe).filter(v=>v!=null)),1)}</b><small>scala CR-10</small></div>
+ <div class="kpi"><span>Monotonia media</span><b>${rows.some(r=>r.w.live)?'–':fmt(mean(rows.map(r=>r.w.mono).filter(v=>v!=null)),2)}</b><small>${rows.some(r=>r.w.live)?'si calcola a settimana finita':'sopra 2 = settimana poco variata'}</small></div>
+ <div class="kpi"><span>ACWR sRPE (7:28) ${rows.some(r=>r.w.live)?'a oggi':''}</span><b>${fmt(mean(rows.map(r=>r.w.acwr).filter(v=>v!=null)),2)}</b><small>media dei giocatori con 4 settimane di dati</small></div></div>
+ <section class="card"><div class="card-h"><h2>sRPE giorno per giorno</h2><span class="sub">${esc(wkLabel(wk))} · in ogni cella RPE × minuti = carico (UA) · verde fino a 400, giallo 400–700, rosso oltre 700</span></div><div class="card-b flush"><div class="tw"><table class="t srpe"><thead><tr><th class="stick">Giocatore</th>${head}<th class="n">Totale</th><th class="n">RPE medio</th><th class="n">Monotonia</th><th class="n">Strain</th><th class="n">ACWR</th></tr></thead><tbody>
+ ${rows.map(r=>`<tr class="click" data-player="${r.p.id}"><td class="name stick">${esc(r.p.name)}</td>${r.w.days.map(x=>x==null?'<td class="n muted">–</td>':x.v==null?`<td class="n"><span class="muted" data-tip="RPE ${x.rpe}: manca la durata della seduta">RPE ${x.rpe}</span></td>`:`<td class="n"><span class="cell ${srpeCls(x.v)}" data-tip="RPE ${x.rpe} × ${fmt(x.min)}′${x.match?' giocati':''}">${fmt(x.v)}</span><small class="sub2">${x.rpe}×${fmt(x.min)}</small></td>`).join('')}<td class="n"><b>${fmt(r.w.tot)}</b></td><td class="n">${fmt(r.w.rpe,1)}</td><td class="n" style="${r.w.mono>2?'color:var(--st-over-ink);font-weight:700':''}">${fmt(r.w.mono,2)}</td><td class="n">${fmt(r.w.strain)}</td><td class="n">${r.w.acwr==null?'<span class="muted">n.d.</span>':`<span style="font-weight:700;color:${r.w.acwr>1.5?'var(--st-over-ink)':r.w.acwr<0.8?'var(--st-under-ink)':'var(--st-ok-ink)'}">${fmt(r.w.acwr,2)}</span>`}</td></tr>`).join('')}
+ </tbody></table></div></div></section>
+ <div class="grid g2"><section class="card"><div class="card-h"><h2>sRPE medio della squadra per giorno</h2></div><div class="card-b">${barChart({labels:dates.map(d=>DOW[(s2d(d).getDay()+6)%7]+' '+s2d(d).getDate()),vals:teamD,colors:dates.map(d=>matchOn(d)?'var(--s2)':'var(--s7)'),yfmt:v=>fmt(v),aria:'sRPE giornaliero'})}${legend([['var(--s7)','Allenamento'],['var(--s2)','Partita']])}</div></section>
+ <section class="card"><div class="card-h"><h2>sRPE settimanale medio</h2><span class="sub">ultime ${wks.length} settimane</span></div><div class="card-b">${barChart({labels:wks.map(w=>'S'+w),vals:teamW,colors:wks.map(w=>w===wk?'var(--accent)':'var(--s7)'),yfmt:v=>fmt(v),aria:'sRPE settimanale'})}</div></section></div>`}`};
+document.addEventListener('change',ev=>{const t=ev.target;if(t.dataset?.sdur==null)return;if(S.readOnly){toast('Accesso in sola lettura.');return}const d=t.dataset.sdur;const wk=weekOfDate(d);const W=S.wellness[wk]=S.wellness[wk]||{wk,days:{},mins:{}};W.dur=W.dur||{};const v=num(t.value);if(v==null)delete W.dur[d];else W.dur[d]=v;saveWell(wk);render()});
+/* nella scheda atleta → Wellness: sRPE delle ultime settimane */
+{const _aw=V4.aWell;V4.aWell=()=>{const pid=S.ui.player;const ws=weeksWithData().concat(Object.keys(S.wellness).map(Number)).filter((v,i,s)=>s.indexOf(v)===i&&v>=1).sort((a,b)=>a-b).slice(-8);const W=ws.map(w=>srpeWeek(pid,w));
+ if(!W.some(Boolean))return _aw();return `<div class="grid g2"><section class="card"><div class="card-h"><h2>Carico interno (sRPE)</h2><span class="sub">RPE × minuti della seduta, somma settimanale</span></div><div class="card-b">${barChart({labels:ws.map(w=>'S'+w),vals:W.map(x=>x?.tot??null),colors:ws.map(()=>'var(--s7)'),yfmt:v=>fmt(v),aria:'sRPE settimanale',tip:i=>W[i]?`<b>Settimana ${ws[i]}</b><br>${fmt(W[i].tot)} UA · RPE medio ${fmt(W[i].rpe,1)}${W[i].mono!=null?` · monotonia ${fmt(W[i].mono,2)}`:''}`:''})}</div></section><section class="card"><div class="card-h"><h2>Settimane</h2><span class="sub">RPE × minuti della seduta</span></div><div class="card-b flush"><div class="tw"><table class="t"><thead><tr><th>Settimana</th><th class="n">sRPE</th><th class="n">RPE medio</th><th class="n">Monotonia</th><th class="n">ACWR</th></tr></thead><tbody>${ws.slice().reverse().map((w,i)=>{const x=W[ws.length-1-i];return x?`<tr><td>${esc(wkLabel(w))}</td><td class="n"><b>${fmt(x.tot)}</b></td><td class="n">${fmt(x.rpe,1)}</td><td class="n">${x.live?'<span class="muted">in corso</span>':fmt(x.mono,2)}</td><td class="n">${fmt(x.acwr,2)}</td></tr>`:''}).join('')}</tbody></table></div></div></section></div>`+_aw()}}
 
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
