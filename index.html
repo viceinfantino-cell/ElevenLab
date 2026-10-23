@@ -4094,6 +4094,57 @@ document.addEventListener('click',ev=>{const t=ev.target.closest('#expJson');if(
  saveFile(`ElevenLab_backup_${d2s(new Date())}.json`,JSON.stringify({app:'ElevenLab',v:1,at:new Date().toISOString(),settings:S.settings,roster:S.roster,calendar:S.calendar,weeks:S.weeks,tests:S.tests,anthro:S.anthro,injuries:S.injuries,wellness:S.wellness,analisi:S.analisi,atletica:S.atl}))},true);
 {const _rb=restoreBackup;restoreBackup=async function(file){let at=null;try{at=JSON.parse(await file.text())?.atletica||null}catch(e){}const r=await _rb(file);if(at&&typeof at==='object'){S.atl={...(S.atl||{}),...at};for(const id of Object.keys(at))atlSave(id)}return r}}
 
+/* ---------- controlli sulle date delle sedute (Dati → Qualità dati) ---------- */
+{const _qi=qualityIssues;qualityIssues=function(){return memo('q2',()=>{const out=[..._qi()];const all=allEntries();const mdays=new Set(calMatches().map(c=>c.date));const byDay={};for(const e of all)if(e.kind==='training'&&e.date)(byDay[e.date]=byDay[e.date]||[]).push(e);
+ for(const e of all){if(e.kind!=='training'||!e.date)continue;const where=`${pName(e.p)} · ${e.md} ${DOW_S[s2d(e.date).getDay()]} ${dShort(e.date)}`;
+  if(e.md&&e.md!==mdForDate(e.date))out.push({sev:'md',t:'MD diverso dal giorno della settimana',d:`${where}: per il tuo schema quel giorno è ${mdForDate(e.date)} (martedì MD+2, mercoledì MD+3, giovedì MD-3, venerdì MD-2). La data o l’MD sono sbagliati.`,e});
+  if(mdays.has(e.date))out.push({sev:'hi',t:'Allenamento nel giorno della partita',d:`${where}: quel giorno c’è la partita. Probabilmente la data è sbagliata.`,e});
+  else if((byDay[e.date]||[]).length===1&&Object.keys(byDay).length>10)out.push({sev:'lo',t:'Seduta di un solo giocatore',d:`${where}: nessun altro ha dati quel giorno. Controlla la data (o è un lavoro individuale).`,e})}
+ const sig=new Map();for(const e of all){if(val(e,'dist')==null)continue;const k=e.p+'|'+e.kind+'|'+['min','dist','d1520','d2025','acc3','vmax'].map(x=>val(e,x)).join('|');if(sig.has(k)&&sig.get(k).date!==e.date)out.push({sev:'hi',t:'Stessa seduta su due date',d:`${pName(e.p)}: valori identici il ${dShort(sig.get(k).date)} e il ${dShort(e.date)} (${fmt(val(e,'dist'))} m, ${fmt(val(e,'min'))}′): probabilmente un copia-incolla nell’Excel.`,e});else sig.set(k,e)}
+ const o={hi:0,md:1,lo:2};return out.sort((a,b)=>o[a.sev]-o[b.sev])})}}
+/* =====================================================================
+   v11 · SCHEDA ATLETA → “La settimana”: tutti i dati del giocatore nella settimana scelta
+   ===================================================================== */
+PAGES.atleta.tabs.splice(1,0,['settimana','La settimana']);WEEKLY2.atleta.push('settimana');
+{const _pa=PAGE_BODY.atleta;PAGE_BODY.atleta=()=>curTab()==='settimana'?V8.aWeek():_pa()}
+const V8={};
+document.head.insertAdjacentHTML('beforeend',`<style>
+.awk-k{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.awk-k .stat b{font-size:20px}
+.awk-k .stat small{display:block;margin-top:4px}.awk-k .stat .cell,.awk-k .stat .vm{display:inline-block;width:auto;min-width:0}
+.awk-t td.rest{color:var(--muted);font-style:italic}
+.awk-t tr.match td{background:rgba(234,88,12,.07)}
+.awk-t tr.today td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.awkbtn{display:inline-flex;align-items:center;gap:6px}
+</style>`);
+V8.aWeek=()=>{const p=P(S.ui.player);if(!p)return '';const wk=S.ui.wk;const a=weekStart(wk);const days=[0,1,2,3,4,5,6].map(i=>addDays(a,i));const today=d2s(new Date());
+ const PBv=pb(p.id)?.v;const t=weekTotal(p.id,wk);const r=reference(p.id,wk);const g=typeof grpOf==='function'?grpOf(p.id):null;
+ const ents=allEntries().filter(e=>e.p===p.id&&e.date>=a&&e.date<=addDays(a,6));const cols=['min','dist','d1520','d2025','d25','acc3','dec3','pm','vmax'];
+ const sr=srpeWeek(p.id,wk);const recs=days.map(d=>num(wellOf(p.id,d)?.rec)).filter(v=>v!=null);const rpes=days.map(d=>num(wellOf(p.id,d)?.rpe)).filter(v=>v!=null);
+ const hsr=t?(t.d2025||0)+(t.d25||0):null;const nx=nextMatchOfWeek(wk);const vmc=v=>v!=null&&PBv?`<span class="vm ${vmClass(v,PBv)}" data-tip="${fmt(v/PBv*100,0)}% del record">${fmt(v,1)}</span>`:fmt(v,1);
+ let h=`<section class="card"><div class="card-h"><h2>${esc(p.name)} · ${esc(wkLabel(wk))}</h2><span class="sub">${nx?`Verso ${esc(nx.opp)}${nx.g?` (G${nx.g})`:''} · `:''}Riferimento: ${esc(refLabel(r))}</span></div>
+ <div class="card-b awk-k"><div class="stat"><span>Sedute</span><b>${t?.n||0}</b><small>${ents.filter(e=>e.kind==='match').length?'+ partita':'allenamenti'}</small></div><div class="stat"><span>Distanza</span><b>${t?fmt(t.dist):'–'}</b><small>${r&&t?cellPct('dist',pctOf(t,r.v,'dist'),p.role)+' della partita':'m'}</small></div>
+ <div class="stat"><span>Oltre 20 km/h</span><b>${hsr!=null?fmt(hsr):'–'}</b><small>m</small></div><div class="stat"><span>Oltre 25 km/h</span><b>${t?fmt(t.d25):'–'}</b><small>${r&&t?cellPct('d25',pctOf(t,r.v,'d25'),p.role)+' della partita':'m'}</small></div>
+ <div class="stat"><span>Acc &gt;3 + Dec &lt;−3</span><b>${t?fmt((t.acc3||0)+(t.dec3||0)):'–'}</b><small>azioni intense</small></div><div class="stat"><span>Vmax</span><b>${t?vmc(t.vmax):'–'}</b><small>${PBv?`record ${fmt(PBv,1)} km/h`:'km/h'}</small></div>
+ <div class="stat"><span>sRPE</span><b>${sr?fmt(sr.tot):'–'}</b><small>${sr?.rpe!=null?`RPE medio ${fmt(sr.rpe,1)}`:'UA'}</small></div><div class="stat"><span>Recupero</span><b>${recs.length?fmt(mean(recs),1):'–'}</b><small>${recs.length?`media di ${recs.length} risposte`:'nessun Form'}</small></div></div></section>`;
+ h+=`<section class="card"><div class="card-h"><h2>Giorno per giorno</h2><span class="sub">GPS, Form del mattino e coerenza con l’obiettivo del giorno (Analisi → Sedute)</span></div><div class="card-b flush"><div class="tw"><table class="t awk-t"><thead><tr><th>Giorno</th><th>MD</th><th>Seduta</th>${metricHead(cols.map(k=>MK[k]))}<th class="n">RPE</th><th class="n">Rec.</th><th class="n">sRPE</th><th class="n">Obiettivo</th></tr></thead><tbody>
+ ${days.map(d=>{const L=ents.filter(e=>e.date===d);const w=wellOf(p.id,d);const s=srpeDay(p.id,d);const k=soOfDate(d);const E=L.some(e=>e.kind==='training')?sessEval(d):null;const me=E?.rows.find(x=>x.p.id===p.id);const c=calMatches().find(x=>x.date===d);
+  const tail=`<td class="n">${fmt(num(w?.rpe))}</td><td class="n">${fmt(num(w?.rec))}</td><td class="n">${s?.v!=null?fmt(s.v):'–'}</td>`;
+  const lab=`<td>${dDow(d)} ${dShort(d)}</td><td><span class="tag">${esc(mdForDate(d))}</span></td>`;
+  if(!L.length)return `<tr class="${d===today?'today':''}">${lab}<td class="rest">${c?`Partita ${esc(c.opp)} · senza GPS`:w?.att==='ass'?'Assente':isTrainDay(d)?'Nessun dato GPS':'Riposo'}</td>${cols.map(()=>'<td class="n muted">–</td>').join('')}${tail}<td class="n">${k&&isTrainDay(d)?`<span class="soobj" style="--oc:${SO_PROF[k].c};font-size:10.5px">${esc(SO_PROF[k].l)}</span>`:''}</td></tr>`;
+  return L.map(e=>`<tr class="${e.kind==='match'?'match':''} ${d===today?'today':''}">${lab}<td>${e.kind==='match'?`<b>Partita</b> ${esc(calOfEntry(e)?.opp||e.opp||'')} <span class="muted">${fmt(playedMin(e,p.id,e.date).min)}′</span>`:`Allenamento${k?` · <span style="color:${SO_PROF[k].c};font-weight:700">${esc(SO_PROF[k].l)}</span>`:''}`}</td>${cols.map(m=>`<td class="n">${m==='vmax'?vmc(val(e,m)):fmtM(m,val(e,m))}</td>`).join('')}${tail}<td class="n">${me?.score!=null?`<b style="color:${scoreCol(me.score)}">${fmt(me.score,0)}</b>`:'–'}</td></tr>`).join('')}).join('')}
+ ${t?`<tr class="sum"><td colspan="3">Totale allenamenti</td>${cols.map(m=>`<td class="n">${m==='vmax'?vmc(t.vmax):fmtM(m,t[m])}</td>`).join('')}<td class="n">${rpes.length?fmt(mean(rpes),1):'–'}</td><td class="n">${recs.length?fmt(mean(recs),1):'–'}</td><td class="n">${sr?fmt(sr.tot):'–'}</td><td></td></tr>`:''}
+ ${r?`<tr class="refr"><td colspan="3">Riferimento partita${r.scaled>1?' <span class="tag acc">a 90′</span>':''}</td>${cols.map(m=>`<td class="n">${fmtM(m,r.v?.[m])}</td>`).join('')}<td colspan="4"></td></tr>`:''}
+ ${t&&r?`<tr class="pctr"><td colspan="3">% della partita</td>${cols.map(m=>`<td class="n">${S.settings.bands[m]?cellPct(m,pctOf(t,r.v,m),p.role):MK[m]?.agg==='sum'&&pctOf(t,r.v,m)!=null?`<span class="muted">${pctTxt(pctOf(t,r.v,m))}</span>`:'–'}</td>`).join('')}<td colspan="4"></td></tr>`:''}
+ </tbody></table></div>${r&&(r.note||r.borrow||r.scaled>1)?`<div class="hint" style="padding:8px 12px">ℹ︎ ${esc(refNoteTxt(p.id,wk,r))}</div>`:''}</div></section>`;
+ if(typeof atlSessions==='function'){const AL=atlSessions().filter(s=>s.date>=a&&s.date<=addDays(a,6));if(AL.length){const T={};for(const s of AL){const x=atlTotals(s)[g]||{};for(const k in x)T[k]=(T[k]||0)+x[k]}
+  h+=`<section class="card"><div class="card-h"><h2>Lavoro atletico a secco</h2><span class="sub">${g?`${esc(atlGroups()[g]?.l||g)} · VAM ${fmt(grpVam(g),1)} km/h`:'Non assegnato a un gruppo VAM'}</span></div><div class="card-b"><div class="row" style="gap:16px;flex-wrap:wrap;margin-bottom:10px">${ATL_MET.filter(([m])=>T[m]).map(([m,l,u])=>`<span><span class="hint">${esc(l)}</span> <b>${fmt(T[m])}${u==='′'?u:u&&u!=='n'?' '+u:''}</b></span>`).join('')||'<span class="hint">Nessun volume per il suo gruppo.</span>'}</div>
+  ${AL.map(s=>`<div style="padding:6px 0;border-top:1px solid var(--line)"><b>${dDow(s.date)} ${dShort(s.date)}</b> <span class="hint">${s.place==='palestra'?'Palestra':'Campo'} · ${esc(s.title||'')}</span><div class="hint" style="margin-top:3px">${(s.blocks||[]).map(b=>{const rows=(b.rows||[]).filter(x=>x.g==='tutti'||rowGroups(x).includes(g));return rows.length?`${esc(b.ex||ATL_C[b.cat]?.l)}: ${esc(rows.map(x=>[x.sets&&x.reps?`${x.sets}×${x.reps}`:'',x.kg?x.kg+' kg':'',x.dist?x.dist+' m':'',x.dur?x.dur+'′':''].filter(Boolean).join(' ')).join(' / '))}`:''}).filter(Boolean).join(' · ')}</div></div>`).join('')}</div></section>`}}
+ return h};
+/* pulsante nella panoramica */
+{const _ap=V4.aPan;V4.aPan=()=>{const h=_ap();const b=`<button class="btn pri awkbtn" data-awk="1">Dati della settimana</button>`;const k='<div class="row" style="justify-content:flex-end;margin-bottom:-4px;gap:8px">';return h.includes(k)?h.replace(k,k+b):`<div class="row" style="justify-content:flex-end">${b}</div>`+h}}
+document.addEventListener('click',ev=>{const t=ev.target.closest('[data-awk]');if(!t)return;S.ui.tabs.atleta='settimana';render();window.scrollTo(0,0)});
+
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
 document.addEventListener('click',e=>{
