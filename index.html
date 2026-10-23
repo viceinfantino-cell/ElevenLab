@@ -3237,6 +3237,203 @@ const CLUB_PRE=[['FC Südtirol','#C8102E','#1F2328'],['Blu e bianco','#1D4ED8','
  const i=h.indexOf('<section class="card"><div class="card-h"><h2>Firma nei report');return i<0?h+card:h.slice(0,i)+card+h.slice(i)}}
 document.addEventListener('click',ev=>{const t=ev.target.closest('[data-clubpre]');if(!t)return;const [n,p,s]=CLUB_PRE[+t.dataset.clubpre];S.settings.club={p,s,name:n};saveSettings();render()});
 document.addEventListener('change',ev=>{if(ev.target.id!=='clubP'&&ev.target.id!=='clubS')return;const C=clubC();S.settings.club={...C,[ev.target.id==='clubP'?'p':'s']:ev.target.value};saveSettings();render()});
+/* ===== v8 · partita riconosciuta all'import, media ufficiale, compensazione, record, profilo partita, riferimento ultime 3, parità Excel ===== */
+document.head.insertAdjacentHTML('beforeend',`<style>
+.impm{position:relative;overflow:hidden;display:flex;gap:16px;align-items:center;padding:16px 20px;border-radius:16px;background:var(--cp);color:#fff;box-shadow:0 10px 26px rgba(0,0,0,.18)}
+.impm::before{content:"";position:absolute;inset:0;left:55%;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='22'%3E%3Cpath d='M18 2 L27 11 L18 20 L9 11Z' fill='white' fill-opacity='0.14'/%3E%3C/svg%3E");background-size:36px 22px}
+.impm::after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--cs)}
+.impm>*{position:relative}.impm .ic{flex:none;width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:26px}
+.impm .pk{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;opacity:.85}
+.impm h3{margin:2px 0 4px;font-size:20px;line-height:1.2;color:#fff}.impm p{margin:0;font-size:13px;opacity:.95;line-height:1.45}
+.impm .kp{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;font-size:12px}.impm .kp b{font-family:var(--f-mono);font-size:13px}
+.impm.tr{background:var(--surface);color:var(--ink);box-shadow:none;border:1px solid var(--line);border-left:5px solid var(--s1)}
+.impm.tr::before,.impm.tr::after{display:none}.impm.tr h3{color:var(--ink)}.impm.tr .ic{background:var(--sunk)}
+.impm .warn{margin-top:8px;font-size:12px;background:rgba(0,0,0,.18);padding:6px 9px;border-radius:8px;display:inline-block}
+td.mpu{background:rgba(22,163,74,.13)}td.mpd{background:rgba(217,119,6,.16)}
+.mpv{display:flex;flex-direction:column;align-items:flex-end;line-height:1.15}.mpv small{font-size:10.5px;font-weight:700;opacity:.85}
+.rec-r{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:8px 0;border-bottom:1px solid var(--line)}.rec-r:last-child{border-bottom:0}
+.rec-r b.v{font-family:var(--f-mono);font-size:16px;color:var(--vm-purple)}.rec-r .hint{grid-column:1/-1}
+.vmx{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;font-size:12.5px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--sunk)}
+.vmx b{font-family:var(--f-mono)}.vmx .lg{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.rwk{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:10px}.rwk label{display:flex;gap:6px;align-items:center;font-size:12.5px}.rwk i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.rwk select{padding:2px 4px;font-size:12px}
+@media (max-width:560px){.impm{padding:14px}.impm .ic{display:none}.impm h3{font-size:18px}}
+</style>`);
+
+/* ---------- 1 · media ufficiale della partita (come il foglio Calendario dell'Excel) ----------
+   priorità: riga “Team Average” del file K-Sport > valori del Calendario Excel > media dei giocatori con GPS */
+const TM_SRC={ks:'Media squadra del file K-Sport (riga “Team Average”)',manual:'Media squadra ufficiale (dal foglio Calendario del tuo Excel)',auto:'Media dei giocatori con GPS'};
+{const _tm=teamMatch;teamMatch=function(c){if(!c)return null;
+ if(c.teamAvg&&Object.keys(c.teamAvg).length)return memo('tmk:'+c.id,()=>({v:{...c.teamAvg},n:c.teamAvgN||matchEntriesOf(c).length,src:'ks'}));
+ if(c.manual&&Object.values(c.manual).some(v=>v!=null&&v!==''))return memo('tmm:'+c.id,()=>({v:{...c.manual},n:matchEntriesOf(c).length,src:'manual'}));
+ return _tm(c)}}
+{const _cr=calRow;calRow=function(c,...a){let h=_cr(c,...a);const tm=teamMatch(c);if(tm&&tm.src!=='auto')h=h.replace('data-tip="Valori di squadra inseriti a mano"',`data-tip="${esc(TM_SRC[tm.src])}"`);return h}}
+{const _vc=VIEWS.calendar;VIEWS.calendar=()=>{let h=_vc();for(const c of calMatches()){const tm=teamMatch(c);if(!tm||tm.src==='auto')continue;const i=h.indexOf(`data-cal="${c.id}" data-ck="g"`);if(i<0)continue;const old='data-tip="Valori inseriti a mano nel vecchio Excel">manuale</span>';const j=h.indexOf(old,i);if(j<0)continue;h=h.slice(0,j)+`data-tip="${esc(TM_SRC[tm.src])}">${tm.src==='ks'?'K-Sport':'Excel'}</span>`+h.slice(j+old.length)}
+ return h.replace('Le medie di squadra si calcolano dai dati partita dei giocatori (Inserimento → Partita). Le partite senza dati individuali mostrano i valori inseriti a mano.','Media a partita come nel foglio Calendario dell’Excel: si usa la riga “Team Average” del file K-Sport della partita; per le partite già nell’Excel i valori del Calendario; altrimenti la media dei giocatori con GPS.')}}
+
+/* ---------- 2 · riconoscimento della partita dal nome del file ---------- */
+const MATCH_KW=/\b(match|partita|gara|vs|campionato|giornata|amichevole|friendly|game|torneo)\b|\bmd\b(?! ?[+-])/;
+const TRAIN_KW=/\b(allenamento|training|seduta|recovery|recupero|scarico|defaticante|power|cod|forza|attivazione|activation|tecnica|rifinitura|richiamo|compensativo|lavoro)\b|\bmd ?[+-] ?\d|\b(pre|post) ?(match|partita|gara)\b|\b(prematch|postmatch)\b/;
+const NAME_STOP=new Set(['team','full','training','match','partita','power','under','data','dati','export','session','sessione','report','giornata','campionato','gps','ksport','sport','average','totale']);
+function detectSession(name,date){if(!name)return null;const base=String(name).replace(/\.[^.]+$/,'');const n=normH(base.replace(/[_.]+/g,' '));const cal=calMatches();const dd=(a,b)=>Math.abs((s2d(a)-s2d(b))/864e5);
+ const own=new Set(teamKey(S.settings.team||'FC Südtirol').split(' ').concat(['sudtirol','suedtirol','sudtirolo']));
+ const toks=n.replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(t=>t.length>=4&&!/^\d+$/.test(t)&&!NAME_STOP.has(t)&&!own.has(t));
+ const hits=cal.filter(c=>{const ws=teamKey(c.opp).split(' ').filter(w=>w.length>=4&&!own.has(w));return toks.some(t=>ws.some(w=>t===w||(t.length>=5&&w.length>=5&&lev(t,w)<=1)))});
+ let byOpp=null;if(hits.length){if(date)byOpp=hits.filter(c=>dd(c.date,date)<=1).sort((a,b)=>dd(a.date,date)-dd(b.date,date))[0]||null;else{const t=d2s(new Date());const past=hits.filter(c=>c.date<=t);byOpp=past[past.length-1]||hits[0]}}
+ const isTrain=TRAIN_KW.test(n),isMatch=MATCH_KW.test(n);const onDate=date?cal.find(c=>c.date===date):null;
+ if(byOpp&&!isTrain)return {kind:'match',c:byOpp,why:`nel nome del file c’è “${byOpp.opp}”`};
+ if(isTrain)return {kind:'training',why:onDate?'il nome del file indica un allenamento':''};
+ if(isMatch){const t=d2s(new Date());const c=onDate||(date?cal.filter(c=>dd(c.date,date)<=2).sort((a,b)=>dd(a.date,date)-dd(b.date,date))[0]:null)||cal.filter(c=>c.date<=t).pop();return c?{kind:'match',c,why:'nel nome del file c’è “partita / match”'}:null}
+ if(onDate)return {kind:'match',c:onDate,why:'in quella data il calendario ha la partita'};
+ return {kind:'training',why:''}}
+function applyDetect(name){const I=S.ui.imp;if(!I||!name)return null;I.file=name;const d=dateFromName(name);const r=detectSession(name,d);if(!r)return null;I.kind=r.kind;I.why=r.why;
+ if(r.kind==='match'&&r.c){I.gid=r.c.id}else if(d){I.date=d;I.md=mdForDate(d)}return r}
+{const _rf=readImportFile;readImportFile=async function(file){await _rf(file);const r=applyDetect(file?.name);render();if(r?.kind==='match'&&r.c)toast(`Partita riconosciuta: G${r.c.g??''} ${r.c.opp} · ${r.why}.`)}}
+{const _dg=driveGet;driveGet=async function(id,mime){await _dg(id,mime);const f=(S.ui.drv?.files||[]).find(x=>x.id===id);const nm=f?.name||f?.title;if(nm&&S.ui.imp){const d=dateFromName(nm);if(d){S.ui.imp.date=d;S.ui.imp.md=mdForDate(d)}applyDetect(nm);render()}}}
+
+/* riga “Team Average” del file K-Sport = media ufficiale della partita */
+const TAVG_RX=/^(team average|team avg|team mean|media squadra|media team|media|average|squadra|team|totale squadra)$/;
+function teamAvgRow(I){if(!I?.rows||I.map.player==null)return null;const body=I.rows.slice(I.hi+1);for(let i=0;i<body.length;i++){const nm=normH(body[i][I.map.player]);if(!TAVG_RX.test(nm))continue;const v={};for(const m of METRICS){const ci=I.map[m.k];if(ci==null)continue;const x=parseNumLoc(body[i][ci]);if(x!=null)v[m.k]=x}return Object.keys(v).length?{i,v,label:String(body[i][I.map.player]).trim()}:null}return null}
+const refWeekOf=date=>weekOfDate(date)+1;
+
+/* banner nell'anteprima: che cosa diventa questo file */
+function importBanner(I){const C=clubC();const ta=teamAvgRow(I);
+ if(I.kind==='match'){const c=S.calendar.matches?.[I.gid];if(!c)return '';const w=refWeekOf(c.date);const nx=nextMatchOfWeek(w);const has=matchEntriesOf(c).length;const lu=c.lineup&&Object.values(c.lineup).some(x=>parseCode(x));
+  return `<section class="impm" style="--cp:${C.p};--cs:${C.s}"><div class="ic" aria-hidden="true">⚽︎</div><div style="min-width:0"><span class="pk">Partita${I.why?' · riconosciuta: '+esc(I.why):''}</span><h3>G${c.g??'–'} · ${esc(c.opp)} · ${esc(dDow(c.date))} ${dShort(c.date)}</h3>
+  <p>Diventa il <b>riferimento della settimana ${w}</b> (${dShort(weekStart(w))} – ${dShort(addDays(weekStart(w),6))}${nx?`, verso ${esc(nx.opp)}`:''}): chi gioca almeno ${S.settings.ref.minMin??45}′ usa i suoi dati riportati a 90′, chi gioca meno usa il compagno dello stesso ruolo.</p>
+  ${ta?`<div class="kp"><span>Media squadra K-Sport (“${esc(ta.label)}”) → media ufficiale della partita:</span>${['min','dist','d2025','d25','acc3','vmax'].filter(k=>ta.v[k]!=null).map(k=>`<span>${esc(MK[k].s||MK[k].l)} <b>${fmtM(k,ta.v[k])}</b></span>`).join('')}</div>`:'<div class="kp"><span>Nel file non c’è la riga “Team Average”: la media a partita sarà quella dei giocatori importati.</span></div>'}
+  ${has?`<div class="warn">Questa partita ha già ${has} giocatori con GPS: con “Sovrascrivi” li aggiorno.</div>`:''}${lu?'':'<div class="warn">Minutaggio non ancora inserito: per la regola dei 45′ uso i minuti del GPS (di solito più alti, includono il riscaldamento). Compilalo in Partite → Minutaggio.</div>'}</div></section>`}
+ const d=I.date;if(!d)return '';const w=weekOfDate(d);const nx=nextMatchOfWeek(w);
+ return `<section class="impm tr"><div class="ic" aria-hidden="true">🏃︎</div><div><span class="pk" style="color:var(--muted)">Allenamento${I.why?' · '+esc(I.why):''}</span><h3>${esc(I.md||'')} · ${esc(dDow(d))} ${dShort(d)}</h3><p class="hint" style="margin:0">Conta nel carico della settimana ${w}${nx?` verso ${esc(nx.opp)}`:''}. Se invece è una partita, scegli “Partita” qui sopra.</p></div></section>`}
+{const _iv=VIEWS.import;VIEWS.import=()=>{let h=_iv();const I=S.ui.imp;if(!I?.rows)return h;const k='<section class="card"><div class="card-h"><h2>4 · Anteprima';const i=h.indexOf(k);const b=importBanner(I);return i<0?h+b:h.slice(0,i)+b+h.slice(i)}}
+
+/* import: salva la media K-Sport sulla partita, segnala i nuovi record, apre la scheda partita */
+{const _di=doImport;doImport=function(){const I=S.ui.imp;if(!I)return _di();const kind=I.kind,gid=I.gid;const ta=kind==='match'?teamAvgRow(I):null;
+ const before={};for(const p of players())before[p.id]=pb(p.id)?.v??null;
+ _di();
+ const c=kind==='match'?S.calendar.matches?.[gid]:null;
+ if(c&&ta){c.teamAvg=ta.v;c.teamAvgN=matchEntriesOf(c).length;c.teamAvgAt=d2s(new Date());saveCalendar()}
+ invalidate();
+ const recs=players().map(p=>({p,b:before[p.id],a:pb(p.id)})).filter(x=>x.a&&x.a.at&&x.b!=null&&x.a.v>x.b+0.04);
+ const msg=[];if(c)msg.push(`G${c.g??''} ${c.opp} salvata${ta?' con la media squadra K-Sport':''}: riferimento della settimana ${refWeekOf(c.date)}.`);
+ if(recs.length)msg.push(`Nuovo record: ${recs.map(x=>`${shortName(x.p.name)} ${fmt(x.a.v,1)} km/h`).join(', ')}.`);
+ if(msg.length)toast(msg.join(' '));
+ if(c){S.ui.match=c.id;S.ui.tabs.partite='calendario';go('partite');window.scrollTo(0,0)}}}
+
+/* ---------- 4 · record personali (Vmax) aggiornati da partite e allenamenti ---------- */
+function vmaxRecords(){return memo('vrec',()=>{const out=[];for(const p of players()){const P_=P(p.id);let best=Math.max(P_?.pbPrev||0,P_?.pbManual||0)||null;
+ const l=allEntries().filter(e=>e.p===p.id&&val(e,'vmax')!=null).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+ for(const e of l){const v=val(e,'vmax');if(best!=null&&v>best+0.04)out.push({p,e,v,prev:best});best=best==null?v:Math.max(best,v)}}
+ return out.sort((a,b)=>(b.e.date||'').localeCompare(a.e.date||''))})}
+const recOfEntry=e=>vmaxRecords().find(r=>r.e===e);
+function recordsCard(today,days=14){const from=addDays(today,-days);const l=vmaxRecords().filter(r=>r.e.date>=from&&r.e.date<=today);if(!l.length)return '';
+ return `<section class="card"><div class="card-h"><h2>Nuovi record di velocità</h2><span class="sub">Ultimi ${days} giorni · PB e soglie 95/90/85/80% aggiornati in automatico</span></div><div class="card-b">${l.map(r=>{const c=r.e.kind==='match'?calOfEntry(r.e):null;
+  return `<div class="rec-r click" data-player="${r.p.id}"><span><b>${esc(r.p.name)}</b> <span class="tag ${r.e.kind==='match'?'match':''}">${r.e.kind==='match'?'Partita '+esc(c?.opp||r.e.opp||''):esc(r.e.md||'Allenamento')}</span> <span class="hint">${esc(dDow(r.e.date))} ${dShort(r.e.date)}</span></span><b class="v">${fmt(r.v,1)} km/h</b><span class="hint">prima ${fmt(r.prev,1)} km/h (+${fmt(r.v-r.prev,1)}) · nuove soglie: 95% ${fmt(r.v*.95,1)} · 90% ${fmt(r.v*.9,1)} · 85% ${fmt(r.v*.85,1)} · 80% ${fmt(r.v*.8,1)}</span></div>`}).join('')}</div></section>`}
+
+/* ---------- 1 · compensazione post-partita ---------- */
+function compRef(c,pid){const thr=S.settings.ref.minMin??45,dur=S.settings.ref.dur||90;const day=matchEntriesOf(c);const role=P(pid)?.role;
+ const mates=day.filter(e=>e.p!==pid&&P(e.p)?.role===role).map(e=>({e,m:playedMin(e,e.p,c.date).min})).filter(x=>x.m>thr).sort((a,b)=>b.m-a.m);
+ if(mates.length){const x=mates[0];return {v:to90(entryVals(x.e),x.m,dur).v,who:x.e.p,min:x.m}}
+ const all=day.filter(e=>P(e.p)&&P(e.p).role!=='PO'&&e.p!==pid).map(e=>({e,m:playedMin(e,e.p,c.date).min})).filter(x=>x.m>thr);
+ return all.length?{v:meanTotals(all.map(x=>to90(entryVals(x.e),x.m,dur).v)),team:all.length}:null}
+const hsOf=v=>(v?.d2025||0)+(v?.d25||0);
+function compList(c){return memo('comp:'+c.id,()=>{const thr=S.settings.ref.minMin??45;const inj=new Set(activeInj().map(i=>i.p));const lu=c.lineup||{};const hasLu=Object.keys(lu).some(k=>parseCode(lu[k]));const ents=matchEntriesOf(c);
+ const low=[],high=[],off=[];
+ for(const p of players()){if(p.role==='PO')continue;const x=parseCode(lu[p.id]);if(x&&(x.st==='inf'||x.st==='nd'))continue;const e=ents.find(y=>y.p===p.id);
+  if(hasLu&&!x&&!e){if(!inj.has(p.id))off.push(p);continue}
+  if(!x&&!e)continue;
+  const min=x?x.min:(val(e,'min')||0);
+  if(min>80){high.push({p,min,src:x?'lu':'gps'});continue}
+  if(min<thr&&!inj.has(p.id)){const r=compRef(c,p.id);if(!r)continue;const own=e?entryVals(e):{};
+   low.push({p,min,x,ref:r,gps:!!e,miss:{dist:Math.max(0,(r.v.dist||0)-(own.dist||0)),hs:Math.max(0,hsOf(r.v)-hsOf(own)),d25:Math.max(0,(r.v.d25||0)-(own.d25||0))}})}}
+ low.sort((a,b)=>b.miss.dist-a.miss.dist);high.sort((a,b)=>b.min-a.min);return {low,high,off,hasLu}})}
+function compBody(c){const L=compList(c);if(!L.low.length&&!L.high.length)return '';const thr=S.settings.ref.minMin??45;
+ return `${L.low.length?`<div class="tw"><table class="t"><thead><tr><th>Sotto ${thr}′</th><th class="n">Mancano · dist</th><th class="n">&gt;20</th><th class="n">&gt;25</th><th>Min</th><th>Riferimento a 90′</th></tr></thead><tbody>${L.low.map(r=>`<tr class="click" data-player="${r.p.id}"><td class="name">${esc(r.p.name)}${r.gps?'':' <span class="tag" data-tip="Nessun dato GPS in partita: conto 0 metri">no GPS</span>'}</td><td class="n"><b>${fmt(r.miss.dist)}</b> m</td><td class="n"><b>${fmt(r.miss.hs)}</b> m</td><td class="n"><b>${fmt(r.miss.d25)}</b> m</td><td>${r.x?.st==='pan'?'<span class="muted">non entrato</span>':fmt(r.min)+'′'}</td><td class="muted" style="font-size:12px">${r.ref.who?`${esc(refShort(r.ref.who))} · ${fmt(r.ref.min)}′`:`media ${r.ref.team} gioc.`}</td></tr>`).join('')}</tbody></table></div>`:''}
+ <div style="padding:10px 14px;display:flex;flex-direction:column;gap:6px">${L.high.length?`<div><b>Oltre 80′ · seduta defaticante / scarico:</b> ${L.high.map(x=>`<span class="tag click" data-player="${x.p.id}">${esc(shortName(x.p.name))} ${fmt(x.min)}′</span>`).join(' ')}</div>`:''}
+ ${L.off.length?`<div class="hint">Non a referto (verifica se hanno giocato con un’altra squadra): ${L.off.map(p=>esc(shortName(p.name))).join(', ')}</div>`:''}
+ <div class="hint">Metri mancanti = dati del compagno dello stesso ruolo con più minuti, riportati a 90′, meno quello che il giocatore ha fatto in partita.${L.hasLu?'':' Minutaggio non inserito: uso i minuti del GPS.'}</div></div>`}
+function compCard(today){const cal=calMatches();const lm=cal.filter(c=>c.date<today).pop();if(!lm)return '';const days=Math.round((s2d(today)-s2d(lm.date))/864e5);if(days<1||days>3)return '';
+ const nx=cal.find(c=>c.date>=today);if(nx&&nx.date<=today)return '';const b=compBody(lm);if(!b)return '';
+ return `<section class="card"><div class="card-h"><h2>Compensazione post-partita · ${esc(lm.opp)}</h2><span class="sub">MD+${days} · ${esc(dDow(lm.date))} ${dShort(lm.date)}</span><button class="btn sm" data-mopen="${lm.id}">Scheda partita</button></div><div class="card-b flush">${b}</div></section>`}
+{const _td=V4.today;V4.today=()=>{const h=_td();if(!players().length)return h;const today=d2s(new Date());const x=compCard(today)+recordsCard(today);if(!x)return h;const i=h.indexOf('<div class="grid g2">');return i<0?x+h:h.slice(0,i)+x+h.slice(i)}}
+
+/* ---------- 5 · profilo partita nella scheda: giocatore vs sua media stagionale e vs media del ruolo ---------- */
+const PROF_K=['dist','d1520','d2025','d25','acc3','dec3','pm','vmax'];
+function seasonMatchAvg(pid,exId){const thr=S.settings.ref.minMin??45,dur=S.settings.ref.dur||90;
+ const l=matchesOf(pid).filter(e=>calOfEntry(e)?.id!==exId).map(e=>({e,m:playedMin(e,pid,e.date).min})).filter(x=>x.m>=thr);
+ return l.length?{v:meanTotals(l.map(x=>to90(entryVals(x.e),x.m,dur).v)),n:l.length}:null}
+function roleMatchAvg(c,role,exPid){const thr=S.settings.ref.minMin??45,dur=S.settings.ref.dur||90;
+ const l=matchEntriesOf(c).filter(e=>e.p!==exPid&&P(e.p)?.role===role).map(e=>({e,m:playedMin(e,e.p,c.date).min})).filter(x=>x.m>=thr);
+ return l.length?{v:meanTotals(l.map(x=>to90(entryVals(x.e),x.m,dur).v)),n:l.length}:null}
+function matchProfile(c){const ents=matchEntriesOf(c).filter(e=>P(e.p));if(!ents.length)return '';const dur=S.settings.ref.dur||90;const mode=S.ui.mprof||'own';
+ const rows=ents.map(e=>({e,p:P(e.p),m:playedMin(e,e.p,c.date).min})).sort((a,b)=>ROLES.findIndex(r=>r.id===a.p.role)-ROLES.findIndex(r=>r.id===b.p.role)||b.m-a.m);
+ const dl=(v,b)=>v!=null&&b?(v-b)/b*100:null;
+ const thr=S.settings.ref.minMin??45;const body=rows.map(r=>{const few=r.m<thr;const v=few?entryVals(r.e):to90(entryVals(r.e),r.m,dur).v;const base=few?null:(mode==='own'?seasonMatchAvg(r.p.id,c.id):roleMatchAvg(c,r.p.role,r.p.id));const rec=recOfEntry(r.e);
+  return `<tr class="click" data-player="${r.p.id}"><td class="name">${esc(r.p.name)} <span class="tag">${esc(r.p.role)}</span>${rec?' <span class="tag" style="background:var(--vm-purple);color:#fff" data-tip="Nuovo record personale di velocità">PB</span>':''}</td><td>${fmt(r.m)}′${r.m<dur&&!few?' <span class="tag acc">a 90′</span>':''}</td>
+  ${PROF_K.map(k=>{const d=dl(v[k],base?.v?.[k]);const cl=d==null?'':d>=10?'mpu':d<=-10?'mpd':'';return `<td class="n ${cl}"><span class="mpv">${fmtM(k,v[k])}${d!=null?`<small>${Math.round(d)===0?'= 0%':(d>0?'▲ +':'▼ ')+fmt(d,0)+'%'}</small>`:''}</span></td>`}).join('')}
+  <td class="muted" style="font-size:11.5px">${few?`sotto ${thr}′: non confrontabile`:base?(mode==='own'?`${base.n} partit${base.n===1?'a':'e'}`:`${base.n} compagn${base.n===1?'o':'i'}`):(mode==='own'?`prima partita ≥${thr}′`:`nessun compagno ≥${thr}′`)}</td></tr>`}).join('');
+ return `<section class="card"><div class="card-h"><h2>Profilo partita</h2><div class="seg"><button data-mprof="own" aria-pressed="${mode==='own'}">vs sua media stagionale</button><button data-mprof="role" aria-pressed="${mode==='role'}">vs media del ruolo</button></div><span class="sub">Chi gioca almeno ${S.settings.ref.minMin??45}′ è riportato a 90′ (sotto, valori reali senza confronto). Verde = almeno 10% sopra, arancio = almeno 10% sotto ${mode==='own'?'le sue altre partite da almeno 45′':'i compagni dello stesso ruolo in questa partita (≥45′)'}.</span></div><div class="card-b flush"><div class="tw"><table class="t"><thead><tr><th>Giocatore</th><th>Min</th>${PROF_K.map(k=>`<th class="n">${esc(MK[k].s||MK[k].l)}</th>`).join('')}<th>Confronto</th></tr></thead><tbody>${body}</tbody></table></div></div></section>`}
+document.addEventListener('click',ev=>{const t=ev.target.closest('[data-mprof]');if(!t)return;S.ui.mprof=t.dataset.mprof;render()});
+{const _ms=V5.matchSheet;V5.matchSheet=c=>{let h=_ms(c);const tm=teamMatch(c);
+ if(tm&&tm.src!=='auto')h=h.replace('Valori inseriti a mano',esc(TM_SRC[tm.src])+(tm.n?` · ${tm.n} giocatori con GPS individuale`:''));
+ h=h.replace(/<div class="note" style="margin-top:10px"><b>Da compensare<\/b>[^<]*<\/div>/,'');
+ const cb=compBody(c);const comp=cb?`<section class="card"><div class="card-h"><h2>Compensazione</h2><span class="sub">Per MD+1 / MD+2: metri che mancano a chi ha giocato poco e chi deve fare scarico</span></div><div class="card-b flush">${cb}</div></section>`:'';
+ const k='<section class="card"><div class="card-h"><h2>Giocatori</h2>';const i=h.indexOf(k);h=i<0?h+comp:h.slice(0,i)+comp+h.slice(i);
+ const w=refWeekOf(c.date);const nx=nextMatchOfWeek(w);
+ if(matchEntriesOf(c).length)h=h.replace('<section class="card"><div class="card-h"><h2>GPS di squadra</h2>',`<div class="note">Questa partita è il <b>riferimento della settimana ${w}</b>${nx?` verso ${esc(nx.opp)}`:''}.</div><section class="card"><div class="card-h"><h2>GPS di squadra</h2>`);
+ return h+matchProfile(c)}}
+
+/* ---------- 7 · riferimento più stabile: media delle ultime 3 partite giocate ≥45′, riportate a 90′ ---------- */
+{const _ref=reference;reference=function(pid,wk){const R=S.settings.ref;if(!mod('refSmart')||R.mode!=='last3')return _ref(pid,wk);
+ return memo(`ref7:${pid}:${wk}`,()=>{const ws=weekStart(wk);const thr=R.minMin??45,dur=R.dur||90;
+  const own=matchesOf(pid).filter(e=>e.date&&e.date<ws).map(e=>({e,m:playedMin(e,pid,e.date).min})).filter(x=>x.m>=thr).sort((a,b)=>b.e.date.localeCompare(a.e.date)).slice(0,3);
+  if(own.length){const vs=own.map(x=>to90(entryVals(x.e),x.m,dur));return {v:meanTotals(vs.map(x=>x.v)),src:own.map(x=>x.e),mode:'last3',played:own[0].m,scaled:Math.max(...vs.map(x=>x.f)),n3:own.length,note:own.length<3?`solo ${own.length} partit${own.length===1?'a':'e'} da almeno ${thr}′`:null}}
+  R.mode='last';let r;try{r=_ref(pid,wk)}finally{R.mode='last3'}return r?{...r,fallback:true}:null})}}
+const oppOf=e=>calOfEntry(e)?.opp||e.opp||dShort(e.date);
+{const _rl=refLabel;refLabel=function(r){if(r?.mode==='last3'&&!r.fallback)return `${r.src.length===1?'unica partita':'media ultime '+r.src.length+' partite'} ≥${S.settings.ref.minMin??45}′ (${r.src.map(oppOf).join(', ')}) · a 90′`;const s=_rl(r);return r?.fallback?s+' · nessuna partita ≥45′, regola ultima partita':s}}
+{const _rb=refBlockLabel;refBlockLabel=function(r){if(r?.mode==='last3'&&!r.fallback)return `<span><b>${r.src.length===1?'Unica partita valida':'Media ultime '+r.src.length}</b> · ${esc(r.src.map(oppOf).join(', '))}</span>`;return _rb(r)}}
+{const _rn=refNoteTxt;refNoteTxt=function(pid,w,r){if(r?.mode==='last3'){const thr=S.settings.ref.minMin??45;if(r.fallback)return `Non ha ancora partite da almeno ${thr}′: uso la regola dell’ultima partita (compagno dello stesso ruolo, riportato a 90′).`;return `${r.src.length===1?'Una sola partita finora':'Media delle ultime '+(r.src.length===3?'3 partite':r.src.length+' partite (le sole finora)')} giocate per almeno ${thr}′, ciascuna riportata a 90′.`}return _rn(pid,w,r)}}
+{const _st=VIEWS.settings;VIEWS.settings=()=>{let h=_st();if(S.ui.setTab!=='metodo')return h;
+ h=h.replace('>Ultima partita giocata</option>','>Ultima partita giocata (regola Excel: &lt;45′ = compagno di ruolo, a 90′)</option>').replace('>Media ultime 3 partite</option>','>Media ultime 3 partite ≥45′, a 90′ (più stabile)</option>');
+ const k='<section class="card"><div class="card-h"><h2>Stagione</h2>';const note=`<section class="card"><div class="card-h"><h2>Quale riferimento scegliere</h2></div><div class="card-b"><div class="note"><b>Ultima partita</b> (predefinito, come il tuo Excel): la settimana si confronta con la partita appena giocata; chi gioca meno di ${S.settings.ref.minMin??45}′ prende il compagno dello stesso ruolo. Segue bene l’avversario appena affrontato ma oscilla da una settimana all’altra.<br><b>Media ultime 3</b>: la media delle sue ultime 3 partite da almeno ${S.settings.ref.minMin??45}′, ognuna riportata a 90′. Più stabile: una partita anomala (pioggia, espulsione, campo pesante) pesa un terzo. Se non ha ancora partite valide si torna alla regola dell’ultima partita.</div></div></section>`;
+ const i=h.indexOf(k);return i<0?h+note:h.slice(0,i)+note+h.slice(i)}}
+
+/* ---------- parità Excel · blocchi settimanali con Vmax colorata sul PB (come i fogli giocatore) ---------- */
+function vmLegend(){const [a,b,c]=S.settings.vmaxBands;return `<span class="lg"><span class="vm g">&lt;${a}%</span><span class="vm y">${a}–${b}%</span><span class="vm gr">${b}–${c}%</span><span class="vm p">&gt;${c}%</span></span>`}
+V5.aSettimane=()=>{const p=P(S.ui.player);if(!p)return '';const ws=weekesWithTr(p.id);
+ if(!ws.length)return '';const cols=METRICS;const open=S.ui.wkOpen||{};const PB=pb(p.id)?.v;const ls=lastSession(p.id);const lw=ws[0];
+ const vmc=(k,v)=>k==='vmax'&&v!=null&&PB?`<td class="n"><span class="vm ${vmClass(v,PB)}" data-tip="${fmt(v/PB*100,0)}% del PB">${fmt(v,1)}</span></td>`:`<td class="n">${fmtM(k,v)}</td>`;
+ return `<section class="card"><div class="card-h"><h2>Settimane di ${esc(p.name.split(' ')[0])}</h2><span class="sub">Come nel tuo Excel: gli allenamenti di ogni settimana, verso la partita successiva, confrontati con la partita che ha giocato prima.</span></div><div class="card-b" style="display:flex;flex-direction:column;gap:12px">
+ <div class="vmx"><span>PB velocità massima <b>${fmt(PB,1)}</b> km/h</span><span>Ultima settimana con dati <b>${lw}</b></span><span>Vmax ultima seduta <b>${ls?fmt(val(ls,'vmax'),1):'–'}</b>${ls&&PB?` (${fmt(val(ls,'vmax')/PB*100,0)}% PB · ${esc(dShort(ls.date))})`:''}</span><span style="display:flex;gap:6px;align-items:center">Vmax per seduta: ${vmLegend()}</span></div>
+ ${ws.map((w,i)=>{const tr=trainings(p.id,w);const t=weekTotal(p.id,w),r=reference(p.id,w);const nx=nextMatchOfWeek(w);const isOpen=open[w]??(i<2);
+  const okBands=BANDED().filter(m=>pctOf(t,r?.v,m.k)!=null);const st=okBands.map(m=>status(m.k,pctOf(t,r?.v,m.k),p.role));const cnt=s=>st.filter(x=>x===s).length;
+  const refName=!r?'partita':r.mode==='last3'&&!r.fallback?(r.src.length===1?'unica partita ≥45′':`media ultime ${r.src.length}`):r.src?.length?esc(calOfEntry(r.src[0])?.opp||r.src[0].opp||'partita'):'partita';
+  return `<div class="wkb${isOpen?' open':''}"><button type="button" class="wkb-h" data-wkopen="${w}"><span class="wkb-t"><b>${esc(wkLabel(w))}</b><small>${nx?`verso ${esc(nx.opp)}${nx.g?` (G${nx.g})`:''}`:'senza partita nel weekend'} · ${tr.length} sedute</small></span><span class="wkb-r"><small>Riferimento</small>${refBlockLabel(r)}</span><span class="wkb-s">${t&&r?`<span class="chip ok">${cnt('ok')}</span><span class="chip under">${cnt('under')}</span><span class="chip over">${cnt('over')}</span>`:''}<span class="dist">${t?fmt(pctOf(t,r?.v,'dist'),0)+'%':''}</span></span><span class="wkb-c" aria-hidden="true">▾</span></button>
+  ${isOpen?`<div class="tw"><table class="t wkt"><thead><tr><th>Data</th><th>MD</th>${metricHead(cols)}</tr></thead><tbody>
+   ${tr.map(e=>`<tr><td>${dDow(e.date)} ${dShort(e.date)}</td><td><span class="tag">${esc(e.md||'')}</span></td>${cols.map(m=>vmc(m.k,val(e,m.k))).join('')}</tr>`).join('')}
+   <tr class="sum"><td colspan="2">Totale settimana</td>${cols.map(m=>vmc(m.k,t?.[m.k])).join('')}</tr>
+   <tr class="refr"><td colspan="2">Riferimento · ${refName}${r?.borrow?.p?` <span class="tag">${esc(refShort(r.borrow.p))}</span>`:r?.borrow?.team?' <span class="tag">media</span>':''}${r?.scaled>1?' <span class="tag acc">a 90′</span>':''}</td>${valsRow(r?.v,cols)}</tr>
+   <tr class="pctr"><td colspan="2">% della partita</td>${cols.map(m=>`<td class="n">${S.settings.bands[m.k]?cellPct(m.k,pctOf(t,r?.v,m.k),p.role):m.agg==='sum'&&pctOf(t,r?.v,m.k)!=null?`<span class="muted">${pctTxt(pctOf(t,r?.v,m.k))}</span>`:'–'}</td>`).join('')}</tr>
+  </tbody></table></div>${r&&(r.note||r.borrow||r.scaled>1||r.mode==='last3')?`<div class="hint" style="padding:8px 12px">${r.borrow||r.fallback?'⚠︎ ':'ℹ︎ '}${esc(refNoteTxt(p.id,w,r))}</div>`:''}`:''}</div>`}).join('')}
+ </div></section>`};
+function weekesWithTr(pid){return weeksWithData().filter(w=>trainings(pid,w).length).reverse()}
+
+/* ---------- parità Excel · “Grafico Ruoli”: pentagono per ruolo con la settimana scelta per ogni giocatore ---------- */
+const PENTA_AX=[['dist','Distanza'],['d25','Sprint >25'],['acc3','Acc >3'],['dec3','Dec <−3'],['pm','Pot. met.']];
+document.addEventListener('click',ev=>{const t=ev.target.closest('[data-penta]');if(!t)return;S.ui.pentaMode=t.dataset.penta;render()});
+document.addEventListener('change',ev=>{const t=ev.target.closest?.('[data-rolewk]');if(!t)return;S.ui.roleWk=S.ui.roleWk||{};S.ui.roleWk[t.dataset.rolewk]=+t.value;render()});
+VIEWS.roles=()=>{const wk=S.ui.wk;let h='';const RW=S.ui.roleWk||{};
+ for(const r of ROLES){const ps=players().filter(p=>p.role===r.id);if(!ps.length)continue;const g=roleWeek(wk,r.id);
+  const opts=ps.map(p=>({p,ws:weeksWithData().filter(w=>weekTotal(p.id,w)&&reference(p.id,w))})).filter(x=>x.ws.length);
+  const sel=opts.map(x=>{const w=RW[x.p.id]!=null&&x.ws.includes(RW[x.p.id])?RW[x.p.id]:x.ws.includes(wk)?wk:x.ws[x.ws.length-1];return {...x,w}}).slice(0,7);
+  const pm=S.ui.pentaMode||'raw';const hiB=k=>bandsFor(k,r.id)?.[1]||null;const pv=(x,k)=>{const v=pctOf(weekTotal(x.p.id,x.w),reference(x.p.id,x.w).v,k);if(v==null||pm==='raw')return v;const h=hiB(k);return h?Math.min(v/h*100,200):v};
+  const radar=sel.length?radarChart({axes:PENTA_AX.map(a=>a[1]),ring:100,yfmt:v=>fmt(v)+'%',aria:'Pentagono '+r.l,series:sel.map((x,i)=>({name:esc(x.p.name)+' · S'+x.w,color:SERIES[i],vals:PENTA_AX.map(([k])=>pv(x,k))}))}):'<div class="empty">Nessun giocatore del ruolo con dati e partita di riferimento.</div>';
+  const pick=sel.length?`<div class="rwk">${sel.map((x,i)=>`<label><i style="background:${SERIES[i]}"></i>${esc(shortName(x.p.name))}<select class="inp" data-rolewk="${x.p.id}" aria-label="Settimana di ${esc(x.p.name)}">${x.ws.slice().reverse().map(w=>`<option value="${w}" ${w===x.w?'selected':''}>Sett. ${w}</option>`).join('')}</select></label>`).join('')}</div>`:'';
+  const tbl=sel.length?`<div class="tw" style="margin-top:10px"><table class="t"><thead><tr><th>Metrica (% sulla partita)</th>${sel.map(x=>`<th class="n">${esc(shortName(x.p.name))}<br><small class="muted">S${x.w}</small></th>`).join('')}</tr></thead><tbody>${PENTA_AX.map(([k,l])=>`<tr><td>${esc(l)}</td>${sel.map(x=>{const v=pctOf(weekTotal(x.p.id,x.w),reference(x.p.id,x.w).v,k);return `<td class="n">${S.settings.bands[k]?cellPct(k,v,x.p.role):`<span class="muted">${pctTxt(v)}</span>`}</td>`}).join('')}</tr>`).join('')}</tbody></table></div>`:'';
+  h+=`<section class="card"><div class="card-h"><h2>${r.l}</h2><span class="hint">${g.ps.length} con dati su ${ps.length}</span></div>
+  <div class="card-b flush">${groupTable(g,r.id,{players:ps,first:'Giocatore',meanLbl:'Media '+r.l.toLowerCase()})}</div>
+  <div class="card-b" style="border-top:1px solid var(--line);display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:18px;align-items:start" data-split><div>${radar}</div><div><div class="seg" style="margin-bottom:8px"><button data-penta="raw" aria-pressed="${pm==='raw'}">% sulla partita (Excel)</button><button data-penta="band" aria-pressed="${pm==='band'}">% sulla soglia alta</button></div><div class="hint">${pm==='band'?'Ogni asse è diviso per la soglia “da monitorare” del parametro: il tratteggio (100%) è il limite alto della fascia, così distanza e accelerazioni stanno sulla stessa scala. Oltre il doppio della soglia il punto resta sul bordo (il valore vero è in tabella). Potenza metabolica senza soglia: resta la % sulla partita. ':''}Pentagono come il foglio “Grafico Ruoli” dell’Excel: % del totale settimanale sulla partita di riferimento per distanza, sprint >25 km/h, accelerazioni >3, decelerazioni <−3 e potenza metabolica media. Il tratteggio è il 100% (una partita). Scegli la settimana di ciascun giocatore per confrontare settimane diverse.</div>${pick}${tbl}</div></div></section>`}
+ return h||'<div class="card"><div class="empty"><b>Nessun giocatore in rosa</b></div></div>'};
 
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
