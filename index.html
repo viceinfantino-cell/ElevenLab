@@ -4161,7 +4161,7 @@ sessDur=function(date){return memo('sd2:'+date,()=>{const W=S.wellness[weekOfDat
    sincronizzazione, così sa chi l'ha cambiato. Se cambia su tutti e due vince claude.ai.
    ===================================================================== */
 const SY={TITLE:'Eleven Lab · Sincronizzazione',FOLDER:'Eleven Lab',INBOX:'PDF da leggere',TAB:'sync',ROWS:80,CH:45000,PFX:'§',
- SCOPE:'https://www.googleapis.com/auth/drive.file',CID:'295038891505-1547so49tejoh3a7cl77t04rge7a672c.apps.googleusercontent.com',
+ SCOPE:'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets.readonly',CID:'295038891505-1547so49tejoh3a7cl77t04rge7a672c.apps.googleusercontent.com',
  st:{busy:false,msg:'',err:'',stats:null,inbox:[]},applying:false,timer:null,lastRun:0,pend:[]};
 function syLS(){try{return JSON.parse(localStorage.getItem('el-sync')||'{}')||{}}catch(e){return {}}}
 function sySet(o){try{localStorage.setItem('el-sync',JSON.stringify({...syLS(),...o}))}catch(e){}}
@@ -4224,11 +4224,11 @@ const SYC={
 
 /* ---------- trasporto: app GitHub (accesso Google nel browser) ---------- */
 function syGisLoad(){return new Promise((ok,ko)=>{if(window.google?.accounts?.oauth2)return ok();let s=document.getElementById('gisjs');if(!s){s=document.createElement('script');s.id='gisjs';s.src='https://accounts.google.com/gsi/client';s.async=true;document.head.appendChild(s)}s.addEventListener('load',()=>ok());s.addEventListener('error',()=>ko({code:'gis'}))})}
-function syTok(){const c=syLS();return c.tok&&c.exp>Date.now()+60000?c.tok:null}
+function syTok(){const c=syLS();return c.tok&&c.exp>Date.now()+60000&&c.scope===SY.SCOPE?c.tok:null}
 /* da chiamare dentro un tocco dell'utente (Google apre una finestra) */
 function syLogin(){return new Promise((ok,ko)=>{const cid=syCid();if(!cid)return ko({code:'nocid'});if(!window.google?.accounts?.oauth2){syGisLoad().catch(()=>{});return ko({code:'gis_wait'})}
- const tc=google.accounts.oauth2.initTokenClient({client_id:cid,scope:SY.SCOPE,callback:r=>{if(r.error)return ko({code:'auth',message:r.error_description||r.error});sySet({tok:r.access_token,exp:Date.now()+(+r.expires_in||3600)*1000,ok:1});ok(r.access_token)},error_callback:e=>ko({code:e?.type==='popup_closed'?'closed':'auth',message:e?.message||e?.type||''})});
- tc.requestAccessToken({prompt:syLS().ok?'':'consent'})})}
+ const tc=google.accounts.oauth2.initTokenClient({client_id:cid,scope:SY.SCOPE,callback:r=>{if(r.error)return ko({code:'auth',message:r.error_description||r.error});sySet({tok:r.access_token,exp:Date.now()+(+r.expires_in||3600)*1000,ok:1,scope:SY.SCOPE,sok:SY.SCOPE});ok(r.access_token)},error_callback:e=>ko({code:e?.type==='popup_closed'?'closed':'auth',message:e?.message||e?.type||''})});
+ tc.requestAccessToken({prompt:syLS().ok&&syLS().sok===SY.SCOPE?'':'consent'})})}
 async function gfetch(url,opt={}){const t=syTok();if(!t)throw {code:'auth_needed'};const r=await fetch(url,{...opt,headers:{Authorization:'Bearer '+t,...(opt.headers||{})}});
  if(r.status===401){sySet({tok:null,exp:0});throw {code:'auth_needed'}}if(!r.ok){let m='';try{m=(await r.json()).error?.message||''}catch(e){}throw {code:'http',status:r.status,message:m}}return r.status===204?null:r.json()}
 const GD='https://www.googleapis.com/drive/v3/files',GS='https://sheets.googleapis.com/v4/spreadsheets';
@@ -4285,7 +4285,7 @@ async function syncNow(o={}){if(SY.st.busy)return;const side=sySide();if(side===
   let loc,vals;
   if(side==='claude'){loc=await SYC.find();if(!loc){SY.st.msg='';SY.st.err='Non trovo il foglio «'+SY.TITLE+'» sul tuo Drive: collega prima l’app GitHub a Google Drive.';return}
    try{vals=await SYC.read(loc.id)}catch(e){sySet({id:null});loc=await SYC.find();if(!loc)throw e;vals=await SYC.read(loc.id)}}
-  else{loc=await SYG.find(true);try{vals=await SYG.read(loc.id)}catch(e){if(e?.code!=='http'||![403,404].includes(e.status))throw e;sySet({id:null,folder:null,inbox:null});loc=await SYG.find(true);vals=await SYG.read(loc.id)}}
+  else{if(syTok()&&S.settings.gsheet?.id&&!gfCfg().url&&Date.now()-(SY.gf||0)>600000){SY.gf=Date.now();try{await gfViaGoogle(true)}catch(e){}}loc=await SYG.find(true);try{vals=await SYG.read(loc.id)}catch(e){if(e?.code!=='http'||![403,404].includes(e.status))throw e;sySet({id:null,folder:null,inbox:null});loc=await SYG.find(true);vals=await SYG.read(loc.id)}}
   const F=syDecode(vals)||{app:'ElevenLab',v:1,docs:{},base:{}};if(loc.folder)F.drive={folder:loc.folder,inbox:loc.inbox};
   let ai=0;try{ai+=syAiImport(F,await (side==='claude'?SYC:SYG).readAi(loc.id))}catch(e){}
   if(side==='claude')ai+=await syInbox(F);if(ai&&side==='claude'&&typeof flushAll==='function')await flushAll();
@@ -4311,10 +4311,12 @@ async function syUploadPend(loc){const L=SY.pend.splice(0);let ok=0;for(const f 
 /* ---------- avvio e controlli automatici ---------- */
 (async()=>{for(let i=0;i<200&&!S.db&&!S.local;i++)await new Promise(r=>setTimeout(r,150));
  if(S.local){if(syCid())syGisLoad().catch(()=>{});setTimeout(()=>{if(syAuto())syncNow()},1500)}
- else if(S.db){for(let i=0;i<200&&!(S.loaded.app&&S.loaded.weeks);i++)await new Promise(r=>setTimeout(r,150));setTimeout(()=>{if(syAuto())syncNow()},3000)}
+ else if(S.db){for(let i=0;i<200&&!(S.loaded.app&&S.loaded.weeks);i++)await new Promise(r=>setTimeout(r,150));setTimeout(async()=>{await syForm();if(syAuto())syncNow()},3000)}
  syUI()})();
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&Date.now()-SY.lastRun>90000&&syAuto())syncNow()});
-setInterval(()=>{if(S.db&&syAuto()&&Date.now()-SY.lastRun>300000&&document.visibilityState==='visible')syncNow()},60000);
+setInterval(async()=>{if(!S.db||document.visibilityState!=='visible')return;if(Date.now()-(SY.gf||0)>900000)await syForm();if(syAuto()&&Date.now()-SY.lastRun>300000)syncNow()},60000);
+/* RPE e recupero dal Google Form: si aggiornano da soli all'apertura e ogni 15 minuti (solo su claude.ai) */
+async function syForm(){if(!S.db||S.readOnly||!S.settings.gsheet?.id||!players().length)return;SY.gf=Date.now();try{await syncGSheet()}catch(e){}}
 
 /* ---------- interfaccia: riga nel menu + scheda Dati → Sincronizzazione ---------- */
 function syAgo(t){if(!t)return 'mai';const m=Math.round((Date.now()-t)/60000);return m<1?'adesso':m<60?`${m} min fa`:new Date(t).toLocaleString('it-IT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
@@ -4393,6 +4395,19 @@ function syAiImport(F,vals){F.inbox=F.inbox||{};const done=F.inbox.done=F.inbox.
   for(const s of r.sessions||[]){if(!s?.id||!s.date||!Array.isArray(s.blocks))continue;if(!S.atl[s.id]){S.atl[s.id]={...s,src:'pdf',drv:true,job:true,gm:clone(atlGroups()),note:s.note||('Letta dall’AI (giro programmato) dal PDF «'+(r.name||'')+'»: controlla date, carichi e gruppi.')};atlSave(s.id);libAdd(s.blocks);n++}ids.push(s.id)}
   done[r.fileId]={at:r.at||new Date().toISOString(),name:r.name||'',n:ids.length,ids,by:'giro programmato'};F.inbox.changed=true}
  return n}
+
+/* ---------- app GitHub: Google Form letto direttamente con l'accesso Google (niente script) ---------- */
+async function gfViaGoogle(silent){const G=S.settings.gsheet||{};if(!G.id)throw {code:'noid'};if(!syTok())throw {code:'auth_needed'};
+ const rg=encodeURIComponent(String(G.range||"'Risposte del modulo 1'!A2:F").replace(/!B2:F$/,'!A2:F'));const v=(await gfetch(`${GS}/${G.id}/values/${rg}`)).values||[];
+ let mins=[];if(G.mins){try{mins=(await gfetch(`${GS}/${G.id}/values/${encodeURIComponent(G.mins)}`)).values||[]}catch(e){}}
+ const res=applyFormRows(v,mins);const t=new Date();gfSave({last:t.toISOString(),via:'google'});S.ui.wSyncMsg=`Fatto: ${res.w} wellness e ${res.r} RPE · ${t.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;if(!silent)toast('Wellness e RPE aggiornati dal Google Form.');return res}
+{const _sv=syncViaScript;syncViaScript=async function(silent){const c=gfCfg();if(S.local&&syLS().id&&!(c.url&&c.token)){
+  if(!syTok()){if(!silent){S.ui.wSyncMsg='Accesso a Google scaduto: tocca «Aggiorna ora» di nuovo.';render();try{await syLogin()}catch(e){S.ui.wSyncMsg=syErr(e);render();return false}}else return false}
+  try{if(!silent){S.ui.wSyncMsg='Leggo il Google Form…';render()}await gfViaGoogle(silent);render();sySoon(4000);return true}
+  catch(e){S.ui.wSyncMsg='Non riesco a leggere il Form: '+(e?.code==='noid'?'manca l’ID del Google Sheet (Salute → Wellness).':e?.status===403?'Google non dà accesso al foglio: tocca «Aggiorna ora» e accetta anche «Vedere i fogli di lavoro di Google».':e?.status===404?'foglio non trovato: controlla l’ID.':syErr(e));if(!silent)render();return false}}
+ return _sv(silent)}}
+{const _ga=gfAuto;gfAuto=function(){if(!inClaude()&&S.local&&syLS().id&&!gfCfg().url&&syTok()&&players().length){const c=gfCfg();if(c.last&&Date.now()-new Date(c.last)<15*60e3)return;syncViaScript(true);return}return _ga()}}
+{const _ws=V3.wSync;V3.wSync=()=>{let h=_ws();if(!inClaude()&&S.local&&syLS().id&&!gfCfg().url){h=h.replace(/<div class="note">Nell’app installata il Form arriva tramite[\s\S]*?<\/div>/,'<div class="note">Il Form arriva con lo <b>stesso accesso Google</b> della sincronizzazione Drive: niente script da configurare. Si aggiorna da solo all’apertura (se l’accesso Google è attivo) e prima di ogni sincronizzazione.</div>').replace(/<section class="card"><div class="card-h"><h2>Collegamento per l’app installata[\s\S]*$/,'')}return h}}
 
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
