@@ -3508,7 +3508,7 @@ const SO_REFS=[
 function soPlan(){return {...SO_DEF,...(S.settings.sessObj||{})}}
 function soT(k){return {...(k==='comp'?SO_COMP:SO_PROF[k]).t,...(S.settings.soRanges?.[k]||{})}}
 S.analisi=S.analisi||{};
-function soOfDate(d){const a=S.analisi?.[d];if(a?.obj&&SO_PROF[a.obj])return a.obj;return soPlan()[s2d(d).getDay()]||null}
+function soOfDate(d){const a=S.analisi?.[d];if(a?.obj&&SO_PROF[a.obj])return a.obj;if(weekOfDate(d)<1)return null;return soPlan()[s2d(d).getDay()]||null}
 function soId(d){return seasonId()+'_'+d}
 function soSave(d){invalidate();markDirty('analisi/'+soId(d),()=>S.analisi[d]||null)}
 function sessEntries(d){return allEntries().filter(e=>e.date===d&&e.kind==='training'&&P(e.p))}
@@ -3989,7 +3989,7 @@ VA.sedute=()=>{const d0=S.ui.atlDate||d2s(new Date());const wk=weekOfDate(d0);co
  h+=L.length?`<div class="atsess">${L.map(s=>{const k=soOfDate(s.date);const T=atlTotals(s);return `<button data-atlsel="${s.id}" aria-pressed="${s.id===id}" style="--oc:${k?SO_PROF[k].c:'var(--line-2)'}"><small>${DOW_FULL[s2d(s.date).getDay()]} ${dShort(s.date)} · ${s.place==='palestra'?'Palestra':'Campo'}</small><b>${esc(s.title||'Seduta atletica')}</b><small>${(s.blocks||[]).length} esercizi${s.src==='pdf'?' · da PDF':''}${s.ai?' · AI':''}</small></button>`}).join('')}</div>`:`<section class="card"><div class="card-b"><div class="empty"><b>Nessun lavoro atletico in questa settimana</b>Crealo con “Nuova seduta atletica” o importalo da un PDF (scheda “Importa PDF”).</div></div></section>`;
  const s=S.atl[id];if(!s)return h;const k=soOfDate(s.date);const Pf=k?SO_PROF[k]:null;const T=atlTotals(s);const C=atlChecks(s);const ai=S.ui.atlAI?.id===id?S.ui.atlAI:null;
  h+=`<section class="card" style="border-top:4px solid ${Pf?.c||'var(--line-2)'}"><div class="card-h"><h2>${esc(DOW_FULL[s2d(s.date).getDay()].replace(/^./,c=>c.toUpperCase()))} ${dShort(s.date)}${Pf?` <span class="soobj" style="--oc:${Pf.c}">${esc(Pf.l)}</span>`:''}</h2><span class="sub">${esc(mdForDate(s.date))}${daysToMatch(s.date)!=null?` · ${daysToMatch(s.date)} giorni alla partita`:''}${s.file?` · da ${esc(s.file)}`:''}</span><button class="btn sm ghost danger" data-atldel="${s.id}" style="margin-left:auto">Elimina seduta</button></div>
- <div class="card-b row" style="gap:12px;align-items:flex-end"><label class="field">Data<input type="date" class="inp" data-as="${s.id}|date" value="${s.date}"></label><label class="field">Dove<select class="inp" data-as="${s.id}|place"><option value="campo" ${s.place!=='palestra'?'selected':''}>Campo</option><option value="palestra" ${s.place==='palestra'?'selected':''}>Palestra</option></select></label><label class="field" style="flex:1;min-width:200px">Titolo<input class="inp" data-as="${s.id}|title" value="${esc(s.title||'')}" placeholder="es. Forza arti inferiori + Nordic"></label></div></section>
+ <div class="card-b row" style="gap:12px;align-items:flex-end"><label class="field">Data<input type="date" class="inp" data-as="${s.id}|date" value="${s.date}"></label><label class="field">Dove<select class="inp" data-as="${s.id}|place"><option value="campo" ${s.place!=='palestra'?'selected':''}>Campo</option><option value="palestra" ${s.place==='palestra'?'selected':''}>Palestra</option></select></label><label class="field" style="flex:1;min-width:200px">Titolo<input class="inp" data-as="${s.id}|title" value="${esc(s.title||'')}" placeholder="es. Forza arti inferiori + Nordic"></label><label class="field" style="flex-basis:100%">Note e testo originale<textarea class="inp" data-as="${s.id}|note" style="min-height:58px;font-family:inherit;font-size:13px">${esc(s.note||'')}</textarea></label></div></section>
  <section class="card"><div class="card-h"><h2>Esercizi</h2><span class="sub">Una riga per gruppo se carichi, ripetizioni o metri cambiano; “Tutti” se è uguale per tutti. Negli intermittenti i metri di ogni gruppo vengono dai Gruppi VAM.</span></div><div class="card-b">${(s.blocks||[]).map((b,bi)=>blockHtml(s,b,bi)).join('')}
  <div class="row" style="gap:6px;flex-wrap:wrap"><span class="hint">Aggiungi:</span>${ATL_CAT.map(([k,l,c])=>`<button class="btn sm" data-abadd="${s.id}|${k}" style="border-left:4px solid ${c}">${esc(l.split(' · ')[0].split(' / ')[0])}</button>`).join('')}</div></div></section>
  <div class="grid g2"><section class="card"><div class="card-h"><h2>Volumi della seduta</h2><span class="sub">Quanto fa ogni giocatore di ciascun gruppo</span></div><div class="card-b flush">${totHtml(T)}</div></section>
@@ -4144,6 +4144,217 @@ V8.aWeek=()=>{const p=P(S.ui.player);if(!p)return '';const wk=S.ui.wk;const a=we
 /* pulsante nella panoramica */
 {const _ap=V4.aPan;V4.aPan=()=>{const h=_ap();const b=`<button class="btn pri awkbtn" data-awk="1">Dati della settimana</button>`;const k='<div class="row" style="justify-content:flex-end;margin-bottom:-4px;gap:8px">';return h.includes(k)?h.replace(k,k+b):`<div class="row" style="justify-content:flex-end">${b}</div>`+h}}
 document.addEventListener('click',ev=>{const t=ev.target.closest('[data-awk]');if(!t)return;S.ui.tabs.atleta='settimana';render();window.scrollTo(0,0)});
+
+/* ---------- sRPE: minuti della seduta = media dei minuti GPS di tutti i giocatori quel giorno
+   (la durata scritta a mano o dal Form si usa solo nei giorni senza GPS) ---------- */
+sessDur=function(date){return memo('sd2:'+date,()=>{const W=S.wellness[weekOfDate(date)];
+ const g=allEntries().filter(e=>e.date===date&&e.kind==='training').map(e=>val(e,'min')).filter(v=>v);if(g.length)return {min:Math.round(mean(g)),src:'gps',n:g.length};
+ const man=num(W?.dur?.[date]);if(man!=null)return {min:man,src:'app'};const fm=num(W?.mins?.[date]);if(fm!=null)return {min:fm,src:'form'};return {min:null,src:''}})};
+{const _vi=V2.interno;V2.interno=()=>{let h=_vi();const a=weekStart(S.ui.wk);for(let i=0;i<7;i++){const d=addDays(a,i);if(sessDur(d).src==='gps')h=h.replace(`data-sdur="${d}"`,`data-sdur="${d}" disabled title="Media dei minuti GPS di tutti i giocatori"`)}return h}}
+/* =====================================================================
+   v12 · SINCRONIZZAZIONE CON GOOGLE DRIVE (app GitHub ⇄ app su claude.ai)
+   Canale: un Foglio Google privato «Eleven Lab · Sincronizzazione», creato dall'app GitHub
+   (accesso Google limitato ai file creati da Eleven Lab) e aggiornato da claude.ai con il
+   connettore Google Sheets. I PDF caricati dall'app GitHub vanno nella cartella
+   «Eleven Lab / PDF da leggere»: li legge l'AI quando si apre l'app da claude.ai.
+   Unione documento per documento: ogni lato ricorda com'era ogni documento all'ultima
+   sincronizzazione, così sa chi l'ha cambiato. Se cambia su tutti e due vince claude.ai.
+   ===================================================================== */
+const SY={TITLE:'Eleven Lab · Sincronizzazione',FOLDER:'Eleven Lab',INBOX:'PDF da leggere',TAB:'sync',ROWS:80,CH:45000,PFX:'§',
+ SCOPE:'https://www.googleapis.com/auth/drive.file',CID:'295038891505-1547so49tejoh3a7cl77t04rge7a672c.apps.googleusercontent.com',
+ st:{busy:false,msg:'',err:'',stats:null,inbox:[]},applying:false,timer:null,lastRun:0,pend:[]};
+function syLS(){try{return JSON.parse(localStorage.getItem('el-sync')||'{}')||{}}catch(e){return {}}}
+function sySet(o){try{localStorage.setItem('el-sync',JSON.stringify({...syLS(),...o}))}catch(e){}}
+function syDev(){let d=syLS().dev;if(!d){d='d'+Math.random().toString(36).slice(2,10);sySet({dev:d})}return d}
+const sySide=()=>S.db?'claude':'github';
+const syBaseKey=()=>S.db?'claude':'github:'+syDev();
+const syCid=()=>syLS().cid||SY.CID;
+function stableStr(o){if(o===null||typeof o!=='object')return JSON.stringify(o)??'null';if(Array.isArray(o))return '['+o.map(stableStr).join(',')+']';return '{'+Object.keys(o).sort().filter(k=>o[k]!==undefined).map(k=>JSON.stringify(k)+':'+stableStr(o[k])).join(',')+'}'}
+function hstr(s){let a=0x811c9dc5,b=5381;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);a=Math.imul(a^c,16777619);b=(Math.imul(b,33)+c)|0}return (a>>>0).toString(36)+'.'+(b>>>0).toString(36)+'.'+s.length.toString(36)}
+const syH=d=>d==null?null:hstr(stableStr(d));
+
+/* ---------- quali documenti viaggiano (stagione corrente; foto escluse) ---------- */
+function syKnown(p){const pre=seasonId()+'_';return /^app\/(config|roster|tests|anthro|injuries)$/.test(p)||p==='app/'+calDoc()||p.startsWith(coll('weeks')+'/w')||p.startsWith(coll('wellness')+'/w')||p.startsWith('atletica/'+pre)||p.startsWith('analisi/'+pre)||p.startsWith('notes/')}
+function syDocsLocal(){const o={};const put=(p,d)=>{if(d!=null)o[p]=JSON.parse(JSON.stringify(d))};
+ put('app/config',S.settings);put('app/roster',S.roster);put('app/tests',S.tests);put('app/anthro',S.anthro);put('app/injuries',S.injuries);put('app/'+calDoc(),S.calendar);
+ for(const [k,w] of Object.entries(S.weeks||{}))if(w)put(wkPath(+(w.wk??k)),{...w,wk:+(w.wk??k)});
+ for(const [k,w] of Object.entries(S.wellness||{}))if(w)put(coll('wellness')+'/w'+String(+(w.wk??k)).padStart(2,'0'),{...w,wk:+(w.wk??k)});
+ for(const [id,s] of Object.entries(S.atl||{}))put('atletica/'+seasonId()+'_'+id,s);
+ for(const [d,a] of Object.entries(S.analisi||{}))put('analisi/'+soId(d),a);
+ for(const [id,n] of Object.entries(S.notes?.items||{}))put('notes/'+id,n);
+ return o}
+async function syDocsDb(){const o={};const db=S.db;const add=(p,d)=>{if(d!=null)o[p]=JSON.parse(JSON.stringify(d))};
+ const app=await db.collection('app').get();for(const d of app.docs)add('app/'+d.id,d.data());
+ for(const c of [coll('weeks'),coll('wellness')]){const s=await db.collection(c).get();for(const d of s.docs)add(c+'/'+d.id,d.data())}
+ for(const c of ['atletica','analisi','notes']){const s=await db.collection(c).get();for(const d of s.docs)add(c+'/'+d.id,d.data())}
+ for(const p of Object.keys(o))if(!syKnown(p))delete o[p];return o}
+function syApply(p,d){const pre=seasonId()+'_';
+ if(p==='app/config'){S.settings=mergeSettings(d);applySeasonRecord();saveSettings()}
+ else if(p==='app/roster'){S.roster=d||{players:{}};saveRoster()}
+ else if(p==='app/tests'){S.tests=d||{sessions:{}};saveTests()}
+ else if(p==='app/anthro'){S.anthro=d||{items:{}};saveAnthro()}
+ else if(p==='app/injuries'){S.injuries=d||{items:{}};saveInjuries()}
+ else if(p==='app/'+calDoc()){S.calendar=d||{matches:{}};saveCalendar()}
+ else if(p.startsWith(coll('weeks')+'/w')){const wk=+p.split('/w').pop();if(d)S.weeks[wk]={...d,wk};else delete S.weeks[wk];saveWeek(wk)}
+ else if(p.startsWith(coll('wellness')+'/w')){const wk=+p.split('/w').pop();if(d)S.wellness[wk]={...d,wk};else delete S.wellness[wk];saveWell(wk)}
+ else if(p.startsWith('atletica/'+pre)){const id=p.slice(('atletica/'+pre).length);S.atl=S.atl||{};if(d)S.atl[id]=d;else delete S.atl[id];atlSave(id)}
+ else if(p.startsWith('analisi/'+pre)){const dd=p.slice(('analisi/'+pre).length);S.analisi=S.analisi||{};if(d)S.analisi[dd]=d;else delete S.analisi[dd];soSave(dd)}
+ else if(p.startsWith('notes/')){const id=p.slice(6);S.notes=S.notes||{items:{}};if(d)S.notes.items[id]={...d,id};else delete S.notes.items[id];saveNote(id)}}
+/* ogni modifica locale fa partire una sincronizzazione poco dopo */
+{const _md=markDirty;markDirty=function(path,get){const r=_md(path,get);if(!SY.applying&&syKnown(path))sySoon(20000);return r}}
+
+/* ---------- il file: JSON spezzato nelle celle A1:A80 della scheda «sync» ---------- */
+function syEncode(F){F.at=new Date().toISOString();F.by=sySide();const s=JSON.stringify(F).replace(/[\u007f-\uffff]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));const ch=[];for(let i=0;i<s.length;i+=SY.CH)ch.push(s.slice(i,i+SY.CH));
+ if(ch.length>SY.ROWS-1)throw {code:'big'};const meta={app:'ElevenLab',v:1,n:ch.length,h:hstr(s),at:F.at,by:F.by};
+ const rows=[[SY.PFX+JSON.stringify(meta)],...ch.map(c=>[SY.PFX+c])];while(rows.length<SY.ROWS)rows.push(['']);return rows}
+function syDecode(vals){const r=(vals||[]).map(x=>String((Array.isArray(x)?x[0]:x)??''));if(!r[0]||!r[0].startsWith(SY.PFX))return null;let meta;try{meta=JSON.parse(r[0].slice(1))}catch(e){throw {code:'corrupt'}}
+ const s=r.slice(1,1+meta.n).map(x=>x.startsWith(SY.PFX)?x.slice(1):x).join('');if(hstr(s)!==meta.h)throw {code:'partial'};return JSON.parse(s)}
+
+/* ---------- trasporto: claude.ai (connettori) ---------- */
+const SYC={
+ async mcp(){let m=null;try{m=await window.claude?.use?.('mcp')}catch(e){}if(!m)throw {code:'no_mcp'};return m},
+ async find(){const c=syLS();if(c.id)return {id:c.id};const m=await this.mcp();const r=await m.callTool('Google Drive','search_files',{query:`title = '${SY.TITLE}' and mimeType = 'application/vnd.google-apps.spreadsheet'`,pageSize:5,excludeContentSnippets:true});
+  const f=((r.payload||{}).files||[]).sort((a,b)=>(b.modifiedTime||'').localeCompare(a.modifiedTime||''))[0];if(!f)return null;sySet({id:f.id});return {id:f.id}},
+ async read(id){const m=await this.mcp();const r=await m.callTool('Google Sheets','get_values',{spreadsheetId:id,range:`${SY.TAB}!A1:A${SY.ROWS}`},{cache:false});return (r.payload||{}).values||[]},
+ async write(id,rows){const m=await this.mcp();await m.callTool('Google Sheets','update_values',{spreadsheetId:id,range:`${SY.TAB}!A1:A${SY.ROWS}`,values:rows})},
+ async inboxList(folder){const m=await this.mcp();const r=await m.callTool('Google Drive','search_files',{query:`parentId = '${folder}' and mimeType = 'application/pdf'`,pageSize:50,excludeContentSnippets:true},{cache:false});return (r.payload||{}).files||[]},
+ async fileBytes(id){const m=await this.mcp();const r=await m.callTool('Google Drive','download_file_content',{fileId:id});const b64=findB64(r.payload??r)||findB64(r.content);if(!b64)throw {code:'tool_error',message:'file vuoto'};
+  const bin=atob(b64.replace(/[\r\n]/g,'').replace(/-/g,'+').replace(/_/g,'/'));const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u}};
+
+/* ---------- trasporto: app GitHub (accesso Google nel browser) ---------- */
+function syGisLoad(){return new Promise((ok,ko)=>{if(window.google?.accounts?.oauth2)return ok();let s=document.getElementById('gisjs');if(!s){s=document.createElement('script');s.id='gisjs';s.src='https://accounts.google.com/gsi/client';s.async=true;document.head.appendChild(s)}s.addEventListener('load',()=>ok());s.addEventListener('error',()=>ko({code:'gis'}))})}
+function syTok(){const c=syLS();return c.tok&&c.exp>Date.now()+60000?c.tok:null}
+/* da chiamare dentro un tocco dell'utente (Google apre una finestra) */
+function syLogin(){return new Promise((ok,ko)=>{const cid=syCid();if(!cid)return ko({code:'nocid'});if(!window.google?.accounts?.oauth2){syGisLoad().catch(()=>{});return ko({code:'gis_wait'})}
+ const tc=google.accounts.oauth2.initTokenClient({client_id:cid,scope:SY.SCOPE,callback:r=>{if(r.error)return ko({code:'auth',message:r.error_description||r.error});sySet({tok:r.access_token,exp:Date.now()+(+r.expires_in||3600)*1000,ok:1});ok(r.access_token)},error_callback:e=>ko({code:e?.type==='popup_closed'?'closed':'auth',message:e?.message||e?.type||''})});
+ tc.requestAccessToken({prompt:syLS().ok?'':'consent'})})}
+async function gfetch(url,opt={}){const t=syTok();if(!t)throw {code:'auth_needed'};const r=await fetch(url,{...opt,headers:{Authorization:'Bearer '+t,...(opt.headers||{})}});
+ if(r.status===401){sySet({tok:null,exp:0});throw {code:'auth_needed'}}if(!r.ok){let m='';try{m=(await r.json()).error?.message||''}catch(e){}throw {code:'http',status:r.status,message:m}}return r.status===204?null:r.json()}
+const GD='https://www.googleapis.com/drive/v3/files',GS='https://sheets.googleapis.com/v4/spreadsheets';
+const qd=s=>s.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+const SYG={
+ async find(create){const c=syLS();if(c.id&&c.inbox)return {id:c.id,folder:c.folder,inbox:c.inbox};
+  const q=encodeURIComponent(`name = '${qd(SY.TITLE)}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`);
+  const l=await gfetch(`${GD}?q=${q}&fields=files(id,parents,modifiedTime)&orderBy=modifiedTime desc&pageSize=5`);let f=l.files?.[0];
+  let folder=c.folder,inbox=c.inbox;
+  const fq=async(name,parent)=>{const q=encodeURIComponent(`name = '${qd(name)}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`+(parent?` and '${parent}' in parents`:''));return (await gfetch(`${GD}?q=${q}&fields=files(id)&pageSize=1`)).files?.[0]?.id||null};
+  const mk=async(name,parent)=>(await gfetch(GD+'?fields=id',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,mimeType:'application/vnd.google-apps.folder',...(parent?{parents:[parent]}:{})})})).id;
+  if(!f&&!create)return null;
+  folder=folder||await fq(SY.FOLDER)||await mk(SY.FOLDER);inbox=inbox||await fq(SY.INBOX,folder)||await mk(SY.INBOX,folder);
+  if(!f){const ss=await gfetch(GS,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({properties:{title:SY.TITLE,locale:'it_IT'},sheets:[{properties:{title:SY.TAB}},{properties:{title:'LEGGIMI'}}]})});
+   f={id:ss.spreadsheetId};await gfetch(`${GD}/${f.id}?addParents=${folder}&removeParents=root&fields=id`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:'{}'}).catch(()=>{});
+   await gfetch(`${GS}/${f.id}/values/LEGGIMI!A1:A4?valueInputOption=RAW`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:[['Eleven Lab · file di sincronizzazione tra l’app GitHub e l’app su claude.ai.'],['Non modificare e non cancellare la scheda «sync»: la scrivono le due app.'],['Contiene i dati dei giocatori (minorenni): non condividere questo file.'],['I PDF da far leggere all’AI vanno nella cartella «Eleven Lab / PDF da leggere».']]})}).catch(()=>{})}
+  sySet({id:f.id,folder,inbox});return {id:f.id,folder,inbox}},
+ async read(id){return (await gfetch(`${GS}/${id}/values/${SY.TAB}!A1:A${SY.ROWS}?majorDimension=ROWS`)).values||[]},
+ async write(id,rows){await gfetch(`${GS}/${id}/values/${SY.TAB}!A1:A${SY.ROWS}?valueInputOption=RAW`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:rows})})},
+ async upload(file,inbox){const b='elb'+Math.random().toString(36).slice(2);const meta=JSON.stringify({name:file.name,parents:[inbox],mimeType:'application/pdf'});
+  const body=new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${b}\r\nContent-Type: application/pdf\r\n\r\n`,file,`\r\n--${b}--`]);
+  return gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+b},body})}};
+
+/* ---------- unione ---------- */
+function syMerge(F,L){const key=syBaseKey();const R=F.docs||(F.docs={});F.base=F.base||{};const B=F.base[key]||{};
+ const keys=new Set([...Object.keys(L),...Object.keys(R),...Object.keys(B)]);let pull=0,push=0,conf=0;const claudeWins=sySide()==='claude';
+ SY.applying=true;try{for(const p of keys){if(!syKnown(p))continue;const hl=syH(L[p]),hr=syH(R[p]),hb=B[p]||null;if(hl===hr)continue;
+  let take;if(hl===hb)take='r';else if(hr===hb)take='l';else{conf++;take=claudeWins?'l':'r'}
+  if(take==='r'){syApply(p,R[p]??null);pull++}else{if(L[p]!=null)R[p]=L[p];else delete R[p];push++}}}finally{SY.applying=false}
+ const nb={};for(const p of Object.keys(R))if(syKnown(p))nb[p]=syH(R[p]);const changed=stableStr(nb)!==stableStr(B);F.base[key]=nb;F.seen={...(F.seen||{}),[key]:new Date().toISOString()};
+ if(pull)invalidate();return {pull,push,conf,write:push>0||changed}}
+
+/* ---------- PDF arrivati su Drive: li legge l'AI (solo su claude.ai) ---------- */
+async function syInbox(F){const folder=F.drive?.inbox;if(!folder)return 0;F.inbox=F.inbox||{};const done=F.inbox.done=F.inbox.done||{};
+ const files=(await SYC.inboxList(folder)).filter(f=>!done[f.id]||(done[f.id].err&&(done[f.id].tries||0)<2));if(!files.length)return 0;
+ let sample=null;try{sample=await window.claude?.use?.('sample')}catch(e){}if(!sample){SY.st.inbox=[{name:files.length+' PDF in attesa',err:'Per leggerli serve l’AI: autorizza Claude in questa app.'}];return 0}
+ let n=0;for(const f of files){const name=f.title||f.name||'programma.pdf';SY.st.msg=`Leggo con l’AI «${name}»…`;syUI();
+  try{const u=await SYC.fileBytes(f.id);await atlImport([new File([u],name,{type:'application/pdf'})]);const I=S.ui.atlImp;S.ui.atlImp=null;
+   if(I?.err)throw {code:'ai',message:I.msg};const R=I?.res||[];
+   for(const s of R){S.atl[s.id]={...s,at:new Date().toISOString(),gm:clone(atlGroups()),drv:true,note:'Letta dall’AI dal PDF «'+name+'» arrivato da Google Drive (app GitHub): controlla date, carichi e gruppi.'};atlSave(s.id);libAdd(s.blocks)}
+   done[f.id]={at:new Date().toISOString(),name,n:R.length,ids:R.map(s=>s.id)};n+=R.length}
+  catch(e){done[f.id]={at:new Date().toISOString(),name,err:e?.message||e?.code||'errore',tries:(done[f.id]?.tries||0)+1}}}
+ F.inbox.changed=true;return n}
+
+/* ---------- sincronizza ---------- */
+function syErr(e){const c=e?.code;return {no_mcp:'Il collegamento ai connettori non è disponibile in questa vista.',nocid:'Inserisci prima il Client ID di Google.',gis:'Non riesco a caricare l’accesso Google: controlla la connessione.',gis_wait:'Accesso Google in caricamento: tocca di nuovo tra un secondo.',auth:'Accesso a Google non riuscito'+(e.message?': '+e.message:'.'),closed:'Finestra di Google chiusa prima di finire.',auth_needed:'Accesso a Google scaduto: tocca «Sincronizza ora».',
+ big:'Troppi dati per il foglio di sincronizzazione.',partial:'Il foglio era in scrittura dall’altra app: riprovo tra poco.',corrupt:'Il foglio di sincronizzazione è stato modificato a mano: non lo tocco.',
+ http:`Google ha risposto con un errore ${e?.status||''}${e?.message?': '+e.message:''}.`}[c]||(typeof mcpMsg==='function'&&e?.code?mcpMsg(e,'Google'):'Sincronizzazione non riuscita'+(e?.message?': '+e.message:'.'))}
+async function syncNow(o={}){if(SY.st.busy)return;const side=sySide();if(side==='github'&&!S.local)return;
+ SY.st={...SY.st,busy:true,msg:'Sincronizzo con Google Drive…',err:''};SY.lastRun=Date.now();syUI();
+ try{if(typeof flushAll==='function')await flushAll();
+  let loc,vals;
+  if(side==='claude'){loc=await SYC.find();if(!loc){SY.st.msg='';SY.st.err='Non trovo il foglio «'+SY.TITLE+'» sul tuo Drive: collega prima l’app GitHub a Google Drive.';return}
+   try{vals=await SYC.read(loc.id)}catch(e){sySet({id:null});loc=await SYC.find();if(!loc)throw e;vals=await SYC.read(loc.id)}}
+  else{loc=await SYG.find(true);try{vals=await SYG.read(loc.id)}catch(e){if(e?.code!=='http'||![403,404].includes(e.status))throw e;sySet({id:null,folder:null,inbox:null});loc=await SYG.find(true);vals=await SYG.read(loc.id)}}
+  const F=syDecode(vals)||{app:'ElevenLab',v:1,docs:{},base:{}};if(loc.folder)F.drive={folder:loc.folder,inbox:loc.inbox};
+  let ai=0;if(side==='claude'){ai=await syInbox(F);if(ai&&typeof flushAll==='function')await flushAll()}
+  const L=side==='claude'?await syDocsDb():syDocsLocal();const r=syMerge(F,L);
+  if(F.inbox?.changed){delete F.inbox.changed;r.write=true}
+  if(r.write){SY.st.msg='Scrivo su Drive…';syUI();const rows=syEncode(F);side==='claude'?await SYC.write(loc.id,rows):await SYG.write(loc.id,rows)}
+  const t=Date.now();sySet({last:t,stats:{...r,ai,t},id:loc.id});SY.st.stats={...r,ai,t};SY.st.inbox=Object.values(F.inbox?.done||{}).sort((a,b)=>(b.at||'').localeCompare(a.at||'')).slice(0,8);
+  SY.st.other=F.seen?Object.entries(F.seen).filter(([k])=>k!==syBaseKey()).map(([k,v])=>({k,v})):[];
+  SY.st.msg='';if(r.pull||ai)toast(`Drive: ${r.pull} aggiornamenti ricevuti${ai?`, ${ai} sedute lette dai PDF`:''}.`);
+  if(side==='github'&&SY.pend.length){await syUploadPend(loc)}}
+ catch(e){SY.st.msg='';SY.st.err=syErr(e);if(e?.code==='partial')sySoon(15000)}
+ finally{SY.st.busy=false;syUI();scheduleRender()}}
+function sySoon(ms){clearTimeout(SY.timer);SY.timer=setTimeout(()=>{if(syAuto())syncNow()},ms)}
+function syAuto(){if(S.db)return !!S.settings.drvSync?.on&&!S.readOnly;return S.local&&!!syLS().id&&!!syTok()}
+
+/* ---------- PDF dall'app GitHub → cartella Drive ---------- */
+async function syUploadPend(loc){const L=SY.pend.splice(0);let ok=0;for(const f of L){try{await SYG.upload(f,loc.inbox);ok++;const c=syLS();sySet({sent:[{name:f.name,at:new Date().toISOString()},...(c.sent||[])].slice(0,15)})}catch(e){SY.pend.push(f);SY.st.err=syErr(e)}}
+ if(ok)toast(`${ok} PDF inviati a Drive: l’AI li legge quando apri Eleven Lab da claude.ai.`);syUI();render()}
+{const _ai=atlImport;atlImport=async function(files){if(S.local&&syLS().id){SY.pend.push(...files);S.ui.atlImp={busy:false,msg:`${files.length} PDF pronti per Google Drive.`,res:[]};
+  if(syTok()){try{await syUploadPend(await SYG.find(true))}catch(e){SY.st.err=syErr(e)}S.ui.atlImp=null}render();return}return _ai(files)}}
+
+/* ---------- avvio e controlli automatici ---------- */
+(async()=>{for(let i=0;i<200&&!S.db&&!S.local;i++)await new Promise(r=>setTimeout(r,150));
+ if(S.local){if(syCid())syGisLoad().catch(()=>{});setTimeout(()=>{if(syAuto())syncNow()},1500)}
+ else if(S.db){for(let i=0;i<200&&!(S.loaded.app&&S.loaded.weeks);i++)await new Promise(r=>setTimeout(r,150));setTimeout(()=>{if(syAuto())syncNow()},3000)}
+ syUI()})();
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&Date.now()-SY.lastRun>90000&&syAuto())syncNow()});
+setInterval(()=>{if(S.db&&syAuto()&&Date.now()-SY.lastRun>300000&&document.visibilityState==='visible')syncNow()},60000);
+
+/* ---------- interfaccia: riga nel menu + scheda Dati → Sincronizzazione ---------- */
+function syAgo(t){if(!t)return 'mai';const m=Math.round((Date.now()-t)/60000);return m<1?'adesso':m<60?`${m} min fa`:new Date(t).toLocaleString('it-IT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
+function syUI(){let el=document.getElementById('syncState');const db=document.getElementById('dbState');if(!el&&db){el=document.createElement('button');el.type='button';el.id='syncState';el.className='st';el.style.cssText='font-size:10.5px;background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit';db.after(el)}
+ if(!el)return;const c=syLS();const on=S.db?!!S.settings.drvSync?.on:!!c.id;el.hidden=!on&&!SY.st.busy;
+ el.textContent=SY.st.busy?'Drive: '+(SY.st.msg||'sincronizzo…'):SY.st.err?'Drive: da controllare':(S.local&&!syTok()?'Drive: tocca per sincronizzare':'Drive: sincronizzato '+syAgo(c.last))}
+document.addEventListener('click',ev=>{const t=ev.target.closest('#syncState');if(!t)return;S.ui.tabs.dati='sync';go('dati')});
+PAGES.dati.tabs.push(['sync','Sincronizzazione']);
+{const _db=PAGE_BODY.dati;PAGE_BODY.dati=()=>curTab()==='sync'?VS.sync():_db()}
+const VS={};
+VS.sync=()=>{const c=syLS();const st=SY.st;const s=st.stats||c.stats;const side=sySide();
+ const stat=s?`<div class="row" style="gap:18px;flex-wrap:wrap"><span><span class="hint">Ultima sincronizzazione</span> <b>${esc(syAgo(s.t))}</b></span><span><span class="hint">Ricevuti</span> <b>${s.pull}</b></span><span><span class="hint">Inviati</span> <b>${s.push}</b></span>${s.conf?`<span><span class="hint">Cambiati da tutte e due</span> <b>${s.conf}</b> <span class="hint">(${side==='claude'?'tenuta la versione di claude.ai':'presa la versione di claude.ai'})</span></span>`:''}${s.ai?`<span><span class="hint">Sedute lette dai PDF</span> <b>${s.ai}</b></span>`:''}</div>`:'<span class="hint">Nessuna sincronizzazione ancora.</span>';
+ const msg=`${st.busy?`<div class="note">⏳ ${esc(st.msg||'Sincronizzo…')}</div>`:''}${st.err?`<div class="note" style="border-color:var(--bad,#dc2626)">⚠︎ ${esc(st.err)}</div>`:''}`;
+ const how=`<section class="card"><div class="card-h"><h2>Come funziona</h2></div><div class="card-b" style="line-height:1.55"><ul style="margin:0;padding-left:18px">
+  <li>Le due versioni dell’app (quella su GitHub e quella su claude.ai) si scambiano i dati attraverso un <b>Foglio Google privato</b> sul tuo Drive, «${esc(SY.TITLE)}», nella cartella «${esc(SY.FOLDER)}».</li>
+  <li>Viaggiano GPS, RPE e recupero, calendario, rosa, test, antropometria, infortuni, note, analisi delle sedute e lavoro atletico. Le foto restano dove sono.</li>
+  <li>Si sincronizza da sola all’apertura e poco dopo ogni modifica. Se lo stesso dato è cambiato su tutte e due, vince la versione di claude.ai.</li>
+  <li>I PDF caricati nell’app GitHub (Lavoro atletico → Importa PDF) finiscono in «${esc(SY.FOLDER)} / ${esc(SY.INBOX)}»: quando apri Eleven Lab da claude.ai l’AI li legge, salva le sedute e queste tornano anche su GitHub. Puoi mettere PDF in quella cartella anche dall’app Google Drive.</li>
+  <li>Il foglio contiene dati di minorenni: non condividerlo con nessuno.</li></ul></div></section>`;
+ if(side==='claude'){const on=!!S.settings.drvSync?.on;
+  return `<section class="card"><div class="card-h"><h2>Sincronizzazione con l’app GitHub</h2><span class="sub">${on?'Attiva: si sincronizza all’apertura, ogni 5 minuti e dopo ogni modifica.':'Non attiva su claude.ai.'}</span></div>
+  <div class="card-b" style="display:grid;gap:12px">${stat}${msg}<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn pri" id="syNow" ${st.busy?'disabled':''}>${on?'Sincronizza ora':'Attiva e sincronizza'}</button>${on?'<button class="btn" id="syOff">Disattiva</button>':''}${c.id?`<a class="btn ghost" href="https://docs.google.com/spreadsheets/d/${esc(c.id)}" target="_blank" rel="noopener">Apri il foglio</a>`:''}</div>
+  ${(st.other||[]).length?`<div class="hint">Ultimo passaggio dell’app GitHub: ${st.other.filter(x=>x.k.startsWith('github')).map(x=>esc(new Date(x.v).toLocaleString('it-IT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}))).join(' · ')||'—'}</div>`:''}</div></section>
+  ${st.inbox?.length?`<section class="card"><div class="card-h"><h2>PDF arrivati da Drive</h2><span class="sub">Letti con l’AI e salvati in Lavoro atletico (da controllare)</span></div><div class="card-b flush"><div class="tw"><table class="t"><thead><tr><th>File</th><th>Quando</th><th>Esito</th></tr></thead><tbody>${st.inbox.map(x=>`<tr><td>${esc(x.name||'')}</td><td>${x.at?esc(new Date(x.at).toLocaleString('it-IT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})):''}</td><td>${x.err?`<span class="chip under">⚠︎ ${esc(x.err)}</span>`:`${x.n} ${x.n===1?"seduta":"sedute"} ${(x.ids||[]).map(id=>S.atl?.[id]?`<button class="btn sm ghost" data-atlgo="${S.atl[id].date}">${esc(dShort(S.atl[id].date))}</button>`:'').join('')}`}</td></tr>`).join('')}</tbody></table></div></div></section>`:''}${how}`}
+ const cid=syCid();const tok=syTok();
+ const guide=`<details ${cid?'':'open'} class="card" style="padding:0"><summary class="card-h" style="cursor:pointer"><h2>Prima configurazione (una volta sola, circa 15 minuti)</h2></summary><div class="card-b" style="line-height:1.6"><ol style="margin:0;padding-left:20px">
+  <li>Dal computer apri <b>console.cloud.google.com</b> con il tuo account Google e crea un progetto (es. «Eleven Lab»).</li>
+  <li>In <b>API e servizi → Libreria</b> attiva <b>Google Drive API</b> e <b>Google Sheets API</b>.</li>
+  <li>In <b>API e servizi → Schermata consenso OAuth</b> (o «Google Auth Platform»): tipo <b>Esterno</b>, nome app «Eleven Lab», la tua email come assistenza e contatto. Nei <b>Destinatari / Utenti di test</b> aggiungi la tua email (e quella dello staff che userà l’app).</li>
+  <li>In <b>Credenziali → Crea credenziali → ID client OAuth</b>: tipo <b>Applicazione web</b>; in <b>Origini JavaScript autorizzate</b> scrivi <code>${esc(location.origin&&location.origin!=='null'?location.origin:'https://viceinfantino-cell.github.io')}</code> (senza barra finale). Non servono URI di reindirizzamento.</li>
+  <li>Copia l’<b>ID client</b> (finisce con <code>.apps.googleusercontent.com</code>) e incollalo qui sotto.</li></ol>
+  <p class="hint" style="margin:10px 0 0">Eleven Lab chiede solo l’accesso ai file che crea lui: non vede il resto del tuo Drive. Google può mostrare «app non verificata»: è la tua app, tocca «Avanzate → Vai a Eleven Lab».</p></div></details>`;
+ return `<section class="card"><div class="card-h"><h2>Sincronizzazione con claude.ai tramite Google Drive</h2><span class="sub">${c.id?(tok?'Collegata: si sincronizza da sola all’apertura e dopo ogni modifica.':'Collegata. L’accesso Google dura un’ora: quando scade tocca «Sincronizza ora».'):'Non ancora collegata.'}</span></div>
+ <div class="card-b" style="display:grid;gap:12px">${c.id?stat:''}${msg}
+  <label class="field">Client ID di Google<input class="inp" id="syCid" value="${esc(cid)}" placeholder="123…apps.googleusercontent.com" autocomplete="off" spellcheck="false"></label>
+  <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn pri" id="syNow" ${st.busy||!cid?'disabled':''}>${c.id?'Sincronizza ora':'Collega Google Drive'}</button>${c.id?`<a class="btn ghost" href="https://docs.google.com/spreadsheets/d/${esc(c.id)}" target="_blank" rel="noopener">Apri il foglio</a><button class="btn ghost" id="syOff">Scollega</button>`:''}</div>
+  ${SY.pend.length?`<div class="note">${SY.pend.length} PDF in attesa di essere inviati a Drive. <button class="btn sm" id="syNow2">Invia ora</button></div>`:''}
+  ${(c.sent||[]).length?`<div class="hint">PDF inviati a Drive: ${c.sent.slice(0,6).map(x=>esc(x.name)).join(' · ')}. L’AI li legge quando apri Eleven Lab da claude.ai.</div>`:''}</div></section>${guide}${how}`};
+document.addEventListener('change',ev=>{if(ev.target.id==='syCid'){const v=ev.target.value.trim();sySet({cid:v,ok:0,tok:null,exp:0});if(v)syGisLoad().catch(()=>{});render()}});
+document.addEventListener('click',ev=>{const t=ev.target.closest('#syNow,#syNow2,#syOff');if(!t)return;
+ if(t.id==='syOff'){if(S.db){S.settings.drvSync={on:false};saveSettings();render();return}confirmBox('Scollegare Google Drive?','L’app smette di sincronizzarsi. Il foglio su Drive resta dov’è e puoi ricollegarti quando vuoi.','Scollega',()=>{sySet({id:null,folder:null,inbox:null,tok:null,exp:0});syUI();render()});return}
+ if(S.db){if(!S.settings.drvSync?.on){S.settings.drvSync={on:true};saveSettings()}syncNow();render();return}
+ const go2=()=>syncNow().then(render);if(syTok()){go2();return}
+ syLogin().then(go2).catch(e=>{SY.st.err=syErr(e);syUI();render()})});
+{const _vi=VA.importa;VA.importa=()=>{let h=_vi();if(S.local&&syLS().id)h=h.replace('<span class="hint">La lettura con l’AI funziona aprendo l’app da claude.ai.</span>','<span class="hint">I PDF vanno nella cartella Drive «'+esc(SY.FOLDER+' / '+SY.INBOX)+'»: l’AI li legge quando apri Eleven Lab da claude.ai e le sedute tornano qui con la sincronizzazione.</span>');return h}}
 
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
