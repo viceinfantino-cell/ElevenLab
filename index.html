@@ -4217,6 +4217,7 @@ const SYC={
   const f=((r.payload||{}).files||[]).sort((a,b)=>(b.modifiedTime||'').localeCompare(a.modifiedTime||''))[0];if(!f)return null;sySet({id:f.id});return {id:f.id}},
  async read(id){const m=await this.mcp();const r=await m.callTool('Google Sheets','get_values',{spreadsheetId:id,range:`${SY.TAB}!A1:A${SY.ROWS}`},{cache:false});return (r.payload||{}).values||[]},
  async write(id,rows){const m=await this.mcp();await m.callTool('Google Sheets','update_values',{spreadsheetId:id,range:`${SY.TAB}!A1:A${SY.ROWS}`,values:rows})},
+ async readAi(id){const m=await this.mcp();const r=await m.callTool('Google Sheets','get_values',{spreadsheetId:id,range:'ai!A1:A500'},{cache:false});return (r.payload||{}).values||[]},
  async inboxList(folder){const m=await this.mcp();const r=await m.callTool('Google Drive','search_files',{query:`parentId = '${folder}' and mimeType = 'application/pdf'`,pageSize:50,excludeContentSnippets:true},{cache:false});return (r.payload||{}).files||[]},
  async fileBytes(id){const m=await this.mcp();const r=await m.callTool('Google Drive','download_file_content',{fileId:id});const b64=findB64(r.payload??r)||findB64(r.content);if(!b64)throw {code:'tool_error',message:'file vuoto'};
   const bin=atob(b64.replace(/[\r\n]/g,'').replace(/-/g,'+').replace(/_/g,'/'));const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u}};
@@ -4241,11 +4242,12 @@ const SYG={
   const mk=async(name,parent)=>(await gfetch(GD+'?fields=id',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,mimeType:'application/vnd.google-apps.folder',...(parent?{parents:[parent]}:{})})})).id;
   if(!f&&!create)return null;
   folder=folder||await fq(SY.FOLDER)||await mk(SY.FOLDER);inbox=inbox||await fq(SY.INBOX,folder)||await mk(SY.INBOX,folder);
-  if(!f){const ss=await gfetch(GS,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({properties:{title:SY.TITLE,locale:'it_IT'},sheets:[{properties:{title:SY.TAB}},{properties:{title:'LEGGIMI'}}]})});
+  if(!f){const ss=await gfetch(GS,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({properties:{title:SY.TITLE,locale:'it_IT'},sheets:[{properties:{title:SY.TAB}},{properties:{title:'ai'}},{properties:{title:'LEGGIMI'}}]})});
    f={id:ss.spreadsheetId};await gfetch(`${GD}/${f.id}?addParents=${folder}&removeParents=root&fields=id`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:'{}'}).catch(()=>{});
    await gfetch(`${GS}/${f.id}/values/LEGGIMI!A1:A4?valueInputOption=RAW`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:[['Eleven Lab · file di sincronizzazione tra l’app GitHub e l’app su claude.ai.'],['Non modificare e non cancellare la scheda «sync»: la scrivono le due app.'],['Contiene i dati dei giocatori (minorenni): non condividere questo file.'],['I PDF da far leggere all’AI vanno nella cartella «Eleven Lab / PDF da leggere».']]})}).catch(()=>{})}
   sySet({id:f.id,folder,inbox});return {id:f.id,folder,inbox}},
  async read(id){return (await gfetch(`${GS}/${id}/values/${SY.TAB}!A1:A${SY.ROWS}?majorDimension=ROWS`)).values||[]},
+ async readAi(id){return (await gfetch(`${GS}/${id}/values/ai!A1:A500?majorDimension=ROWS`)).values||[]},
  async write(id,rows){await gfetch(`${GS}/${id}/values/${SY.TAB}!A1:A${SY.ROWS}?valueInputOption=RAW`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:rows})})},
  async upload(file,inbox){const b='elb'+Math.random().toString(36).slice(2);const meta=JSON.stringify({name:file.name,parents:[inbox],mimeType:'application/pdf'});
   const body=new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${b}\r\nContent-Type: application/pdf\r\n\r\n`,file,`\r\n--${b}--`]);
@@ -4268,6 +4270,7 @@ async function syInbox(F){const folder=F.drive?.inbox;if(!folder)return 0;F.inbo
   try{const u=await SYC.fileBytes(f.id);await atlImport([new File([u],name,{type:'application/pdf'})]);const I=S.ui.atlImp;S.ui.atlImp=null;
    if(I?.err)throw {code:'ai',message:I.msg};const R=I?.res||[];
    for(const s of R){S.atl[s.id]={...s,at:new Date().toISOString(),gm:clone(atlGroups()),drv:true,note:'Letta dall’AI dal PDF «'+name+'» arrivato da Google Drive (app GitHub): controlla date, carichi e gruppi.'};atlSave(s.id);libAdd(s.blocks)}
+   if(R.length){SY.st.msg=`Analizzo con l’AI «${name}»…`;syUI();await atlAutoAI(R.map(s=>s.id),sample)}
    done[f.id]={at:new Date().toISOString(),name,n:R.length,ids:R.map(s=>s.id)};n+=R.length}
   catch(e){done[f.id]={at:new Date().toISOString(),name,err:e?.message||e?.code||'errore',tries:(done[f.id]?.tries||0)+1}}}
  F.inbox.changed=true;return n}
@@ -4284,8 +4287,10 @@ async function syncNow(o={}){if(SY.st.busy)return;const side=sySide();if(side===
    try{vals=await SYC.read(loc.id)}catch(e){sySet({id:null});loc=await SYC.find();if(!loc)throw e;vals=await SYC.read(loc.id)}}
   else{loc=await SYG.find(true);try{vals=await SYG.read(loc.id)}catch(e){if(e?.code!=='http'||![403,404].includes(e.status))throw e;sySet({id:null,folder:null,inbox:null});loc=await SYG.find(true);vals=await SYG.read(loc.id)}}
   const F=syDecode(vals)||{app:'ElevenLab',v:1,docs:{},base:{}};if(loc.folder)F.drive={folder:loc.folder,inbox:loc.inbox};
-  let ai=0;if(side==='claude'){ai=await syInbox(F);if(ai&&typeof flushAll==='function')await flushAll()}
-  const L=side==='claude'?await syDocsDb():syDocsLocal();const r=syMerge(F,L);
+  let ai=0;try{ai+=syAiImport(F,await (side==='claude'?SYC:SYG).readAi(loc.id))}catch(e){}
+  if(side==='claude')ai+=await syInbox(F);if(ai&&side==='claude'&&typeof flushAll==='function')await flushAll();
+  const L=side==='claude'?await syDocsDb():syDocsLocal();const drv0=new Set(Object.values(S.atl||{}).filter(x=>x?.drv).map(x=>x.id));const r=syMerge(F,L);
+  const drvNew=Object.values(S.atl||{}).filter(x=>x?.drv&&!drv0.has(x.id));if(side==='github'&&drvNew.length)setTimeout(()=>toast(`Arrivate ${drvNew.length} sedute lette dall’AI${drvNew.some(x=>x.ai)?', con l’analisi':''}: le trovi in Lavoro atletico.`),2700);
   if(F.inbox?.changed){delete F.inbox.changed;r.write=true}
   if(r.write){SY.st.msg='Scrivo su Drive…';syUI();const rows=syEncode(F);side==='claude'?await SYC.write(loc.id,rows):await SYG.write(loc.id,rows)}
   const t=Date.now();sySet({last:t,stats:{...r,ai,t},id:loc.id});SY.st.stats={...r,ai,t};SY.st.inbox=Object.values(F.inbox?.done||{}).sort((a,b)=>(b.at||'').localeCompare(a.at||'')).slice(0,8);
@@ -4369,6 +4374,25 @@ function atlDateFromName(n){const s=String(n||'').toLowerCase();const d0=dateFro
 {const _ip=atlImportPrompt;atlImportPrompt=function(t,wk){return _ip(t,wk).replace('Se i chili o le ripetizioni cambiano per gruppo, fai una riga per gruppo.','ATTENZIONE: nelle schede di forza i gruppi per peso corporeo o livello di carico (Light/Medium/Heavy, Leggero/Medio/Pesante, G1/G2/G3 con chili diversi) NON sono i gruppi VAM: per questi esercizi usa g "tutti", in "kg" metti la media dei chili dei gruppi e scrivi i chili di ciascun gruppo nella "note" della riga (es. "G1 16 kg · G2 18 kg"). Mappa su '+grpKeys().join(', ')+' solo i gruppi dei lavori di corsa (intermittenti, metraggi sulla VAM) o quando il PDF elenca i nomi dei giocatori; lì, se metri o ripetizioni cambiano per gruppo, fai una riga per gruppo.')}}
 /* doppioni: avviso nella nota se nello stesso giorno c'è già una seduta */
 {const _sv=atlSave;atlSave=function(id){const s=S.atl?.[id];if(s?.drv&&!s.dupChk){s.dupChk=1;const o=Object.values(S.atl).filter(x=>x&&x.id!==id&&x.date===s.date);if(o.length)s.note=(s.note||'')+` ⚠︎ Attenzione: il ${dShort(s.date)} c’è già «${o.map(x=>x.title).join('», «')}»: se è la stessa seduta, eliminane una.`}return _sv(id)}}
+
+/* ---------- analisi AI automatica di ogni seduta importata dai PDF ---------- */
+async function atlAutoAI(ids,sample){if(!sample){try{sample=await window.claude?.use?.('sample')}catch(e){}}if(!sample)return 0;let n=0;
+ for(const id of ids){const s=S.atl?.[id];if(!s||s.ai)continue;try{const {text}=await sample(atlPrompt(id),{cache:false});if(text){S.atl[id]={...S.atl[id],ai:{text,at:new Date().toISOString(),auto:true}};atlSave(id);n++;scheduleRender()}}catch(e){if(e?.code==='rate_limited'||e?.code==='not_granted')break}}return n}
+document.addEventListener('click',ev=>{if(!ev.target.closest('#atlImpSave')||!S.db)return;const ids=(S.ui.atlImp?.res||[]).map(s=>s.id);if(!ids.length)return;
+ setTimeout(async()=>{toast(`Analisi AI di ${ids.length} ${ids.length===1?'seduta':'sedute'} in corso…`);const n=await atlAutoAI(ids);if(n)toast(`Analisi AI pronta per ${n} ${n===1?'seduta':'sedute'}: la trovi sotto ogni seduta.`);render()},400)},true);
+/* app GitHub: stato dei PDF inviati (in attesa / letti, con analisi) */
+{const _vi2=VA.importa;VA.importa=()=>{let h=_vi2();const c=syLS();if(!(S.local&&c.id&&(c.sent||[]).length))return h;
+ const rows=c.sent.slice(0,10).map(x=>{const got=Object.values(S.atl||{}).filter(s=>s?.drv&&s.file===x.name);
+  return `<tr><td>${esc(x.name)}</td><td>${esc(new Date(x.at).toLocaleString('it-IT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}))}</td><td>${got.length?got.map(s=>`<button class="btn sm" data-atlgo="${s.date}">${esc(dShort(s.date))} · ${esc(s.title||'seduta')}</button> ${s.ai?'<span class="chip ok">analisi pronta</span>':'<span class="chip">analisi in arrivo</span>'}`).join(' '):'<span class="hint">In attesa: si legge quando apri Eleven Lab da claude.ai</span>'}</td></tr>`}).join('');
+ return h+`<section class="card"><div class="card-h"><h2>PDF inviati all’AI</h2><span class="sub">Letti su claude.ai e tornati qui con la sincronizzazione</span><button class="btn sm" id="syNow" style="margin-left:auto">Sincronizza ora</button></div><div class="card-b flush"><div class="tw"><table class="t"><thead><tr><th>File</th><th>Inviato</th><th>Seduta e analisi</th></tr></thead><tbody>${rows}</tbody></table></div></div></section>`}}
+
+/* ---------- sedute lette dall'attività programmata (scheda «ai» del foglio) ---------- */
+function syAiImport(F,vals){F.inbox=F.inbox||{};const done=F.inbox.done=F.inbox.done||{};let n=0;
+ for(const v of vals||[]){const t=String((Array.isArray(v)?v[0]:v)??'');if(!t.startsWith(SY.PFX))continue;let r;try{r=JSON.parse(t.slice(1))}catch(e){continue}
+  if(!r?.fileId||done[r.fileId])continue;const ids=[];
+  for(const s of r.sessions||[]){if(!s?.id||!s.date||!Array.isArray(s.blocks))continue;if(!S.atl[s.id]){S.atl[s.id]={...s,src:'pdf',drv:true,job:true,gm:clone(atlGroups()),note:s.note||('Letta dall’AI (giro programmato) dal PDF «'+(r.name||'')+'»: controlla date, carichi e gruppi.')};atlSave(s.id);libAdd(s.blocks);n++}ids.push(s.id)}
+  done[r.fileId]={at:r.at||new Date().toISOString(),name:r.name||'',n:ids.length,ids,by:'giro programmato'};F.inbox.changed=true}
+ return n}
 
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
