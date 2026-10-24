@@ -4356,6 +4356,20 @@ document.addEventListener('click',ev=>{const t=ev.target.closest('#syNow,#syNow2
  syLogin().then(go2).catch(e=>{SY.st.err=syErr(e);syUI();render()})});
 {const _vi=VA.importa;VA.importa=()=>{let h=_vi();if(S.local&&syLS().id)h=h.replace('<span class="hint">La lettura con l’AI funziona aprendo l’app da claude.ai.</span>','<span class="hint">I PDF vanno nella cartella Drive «'+esc(SY.FOLDER+' / '+SY.INBOX)+'»: l’AI li legge quando apri Eleven Lab da claude.ai e le sedute tornano qui con la sincronizzazione.</span>');return h}}
 
+/* ---------- date dai nomi dei file PDF: anche «23 set 2026», «30:09», «_2110» ---------- */
+const IT_MON={gen:1,feb:2,mar:3,apr:4,mag:5,giu:6,lug:7,ago:8,set:9,ott:10,nov:11,dic:12};
+function atlDateFromName(n){const s=String(n||'').toLowerCase();const d0=dateFromName(s);if(d0)return d0;
+ const yS=+String(S.settings.seasonStart||'2026-09-07').slice(0,4);const mk=(d,m,y)=>{d=+d;m=+m;if(!(d>=1&&d<=31&&m>=1&&m<=12))return null;y=y?+y:(m>=7?yS:yS+1);const t=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;return isNaN(s2d(t))?null:t};
+ let m=s.match(/(?:^|[^\d])(\d{1,2})\s*(gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\.?\s*(20\d{2})?/);if(m){const r=mk(m[1],IT_MON[m[2]],m[3]);if(r)return r}
+ m=s.match(/(?:^|[^\d])(\d{1,2})[:\/._-](\d{1,2})(?:[:\/._-](20\d{2}))?(?!\d)/);if(m){const r=mk(m[1],m[2],m[3]);if(r)return r}
+ m=s.match(/(?:^|[^\d])(\d{2})(\d{2})(?=[^\d]|$)/);if(m){const r=mk(m[1],m[2]);if(r)return r}
+ return null}
+{const _rd=atlResolveDate;atlResolveDate=function(s,fname,wk){const r=_rd(s,fname,wk);if(r.src==='none'||r.src==='day'){const fd=atlDateFromName(fname);if(fd){if(r.src==='none')return {date:fd,src:'file'};const off=(s2d(r.date).getDay()+6)%7;return {date:addDays(weekStart(weekOfDate(fd)),off),src:'day'}}}return r}}
+/* gruppi per peso corporeo ≠ gruppi VAM */
+{const _ip=atlImportPrompt;atlImportPrompt=function(t,wk){return _ip(t,wk).replace('Se i chili o le ripetizioni cambiano per gruppo, fai una riga per gruppo.','ATTENZIONE: nelle schede di forza i gruppi per peso corporeo o livello di carico (Light/Medium/Heavy, Leggero/Medio/Pesante, G1/G2/G3 con chili diversi) NON sono i gruppi VAM: per questi esercizi usa g "tutti", in "kg" metti la media dei chili dei gruppi e scrivi i chili di ciascun gruppo nella "note" della riga (es. "G1 16 kg · G2 18 kg"). Mappa su '+grpKeys().join(', ')+' solo i gruppi dei lavori di corsa (intermittenti, metraggi sulla VAM) o quando il PDF elenca i nomi dei giocatori; lì, se metri o ripetizioni cambiano per gruppo, fai una riga per gruppo.')}}
+/* doppioni: avviso nella nota se nello stesso giorno c'è già una seduta */
+{const _sv=atlSave;atlSave=function(id){const s=S.atl?.[id];if(s?.drv&&!s.dupChk){s.dupChk=1;const o=Object.values(S.atl).filter(x=>x&&x.id!==id&&x.date===s.date);if(o.length)s.note=(s.note||'')+` ⚠︎ Attenzione: il ${dShort(s.date)} c’è già «${o.map(x=>x.title).join('», «')}»: se è la stessa seduta, eliminane una.`}return _sv(id)}}
+
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
 document.addEventListener('click',e=>{
