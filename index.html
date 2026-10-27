@@ -4175,7 +4175,7 @@ function hstr(s){let a=0x811c9dc5,b=5381;for(let i=0;i<s.length;i++){const c=s.c
 const syH=d=>d==null?null:hstr(stableStr(d));
 
 /* ---------- quali documenti viaggiano (stagione corrente; foto escluse) ---------- */
-function syKnown(p){const pre=seasonId()+'_';return /^app\/(config|roster|tests|anthro|injuries)$/.test(p)||p==='app/'+calDoc()||p.startsWith(coll('weeks')+'/w')||p.startsWith(coll('wellness')+'/w')||p.startsWith('atletica/'+pre)||p.startsWith('analisi/'+pre)||p.startsWith('notes/')}
+function syKnown(p){const pre=seasonId()+'_';return /^app\/(config|roster|tests|anthro|injuries)$/.test(p)||p==='app/'+calDoc()||p.startsWith(coll('weeks')+'/w')||p.startsWith(coll('wellness')+'/w')||p.startsWith('atletica/'+pre)||p.startsWith('analisi/'+pre)||p.startsWith('notes/')||p.startsWith('photos/')}
 function syDocsLocal(){const o={};const put=(p,d)=>{if(d!=null)o[p]=JSON.parse(JSON.stringify(d))};
  put('app/config',S.settings);put('app/roster',S.roster);put('app/tests',S.tests);put('app/anthro',S.anthro);put('app/injuries',S.injuries);put('app/'+calDoc(),S.calendar);
  for(const [k,w] of Object.entries(S.weeks||{}))if(w)put(wkPath(+(w.wk??k)),{...w,wk:+(w.wk??k)});
@@ -4183,11 +4183,12 @@ function syDocsLocal(){const o={};const put=(p,d)=>{if(d!=null)o[p]=JSON.parse(J
  for(const [id,s] of Object.entries(S.atl||{}))put('atletica/'+seasonId()+'_'+id,s);
  for(const [d,a] of Object.entries(S.analisi||{}))put('analisi/'+soId(d),a);
  for(const [id,n] of Object.entries(S.notes?.items||{}))put('notes/'+id,n);
+ for(const [id,ph] of Object.entries(S.photos||{}))if(ph)put('photos/'+id,{d:ph});
  return o}
 async function syDocsDb(){const o={};const db=S.db;const add=(p,d)=>{if(d!=null)o[p]=JSON.parse(JSON.stringify(d))};
  const app=await db.collection('app').get();for(const d of app.docs)add('app/'+d.id,d.data());
  for(const c of [coll('weeks'),coll('wellness')]){const s=await db.collection(c).get();for(const d of s.docs)add(c+'/'+d.id,d.data())}
- for(const c of ['atletica','analisi','notes']){const s=await db.collection(c).get();for(const d of s.docs)add(c+'/'+d.id,d.data())}
+ for(const c of ['atletica','analisi','notes','photos']){const s=await db.collection(c).get();for(const d of s.docs)add(c+'/'+d.id,d.data())}
  for(const p of Object.keys(o))if(!syKnown(p))delete o[p];return o}
 function syApply(p,d){const pre=seasonId()+'_';
  if(p==='app/config'){S.settings=mergeSettings(d);applySeasonRecord();saveSettings()}
@@ -4200,7 +4201,8 @@ function syApply(p,d){const pre=seasonId()+'_';
  else if(p.startsWith(coll('wellness')+'/w')){const wk=+p.split('/w').pop();if(d)S.wellness[wk]={...d,wk};else delete S.wellness[wk];saveWell(wk)}
  else if(p.startsWith('atletica/'+pre)){const id=p.slice(('atletica/'+pre).length);S.atl=S.atl||{};if(d)S.atl[id]=d;else delete S.atl[id];atlSave(id)}
  else if(p.startsWith('analisi/'+pre)){const dd=p.slice(('analisi/'+pre).length);S.analisi=S.analisi||{};if(d)S.analisi[dd]=d;else delete S.analisi[dd];soSave(dd)}
- else if(p.startsWith('notes/')){const id=p.slice(6);S.notes=S.notes||{items:{}};if(d)S.notes.items[id]={...d,id};else delete S.notes.items[id];saveNote(id)}}
+ else if(p.startsWith('notes/')){const id=p.slice(6);S.notes=S.notes||{items:{}};if(d)S.notes.items[id]={...d,id};else delete S.notes.items[id];saveNote(id)}
+ else if(p.startsWith('photos/')){const id=p.slice(7);S.photos=S.photos||{};if(d?.d)S.photos[id]=d.d;else delete S.photos[id];savePhoto(id)}}
 /* ogni modifica locale fa partire una sincronizzazione poco dopo */
 {const _md=markDirty;markDirty=function(path,get){const r=_md(path,get);if(!SY.applying&&syKnown(path))sySoon(20000);return r}}
 
@@ -4463,7 +4465,9 @@ h1,h2,h3{font-family:var(--f-display);letter-spacing:.02em}
 .fut .ovr{font-family:var(--f-num)!important;font-size:50px!important;line-height:.9!important}
 .fut .attrs{font-family:var(--f-num)!important;font-size:19px!important}
 .fut .attrs em{font-family:var(--f-body)}
-.fut .av{background:rgba(7,18,38,.86)!important;color:#eef3fb!important;width:46px!important;height:46px!important;font-family:var(--f-num);font-size:18px!important}
+.fut .av{color:#eef3fb!important;width:52px!important;height:52px!important;font-family:var(--f-num);font-size:18px!important}
+.fut .av:not([style*="url("]){background:rgba(7,18,38,.86)!important}
+.fut .av[style*="url("]{background-size:cover!important;background-position:center!important;box-shadow:0 0 0 2px rgba(255,255,255,.75),0 4px 12px rgba(0,0,0,.35)}
 .fut .nm{font-family:var(--f-display);font-size:20px;letter-spacing:.04em;text-transform:uppercase}
 .fut .rl{font-family:var(--f-num);font-weight:700;font-size:18px;margin-top:4px}
 .fut-leg{display:flex;flex-wrap:wrap;gap:16px;align-items:center;font-size:13px;color:var(--ink-2);margin:4px 0 14px}
