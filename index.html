@@ -4872,6 +4872,114 @@ function lyCards(){const on=matchMedia('(max-width:640px)').matches;
 document.addEventListener('click',e=>{if(!matchMedia('(hover: none)').matches)return;const t=e.target.closest?.('[data-tiph],[data-tip]');const tip=document.getElementById('tip');if(!tip)return;if(!t){tip.hidden=true;return}
  if(t.dataset.tiph!=null)tip.innerHTML=t.dataset.tiph;else tip.textContent=t.dataset.tip;tip.hidden=false;const w=tip.offsetWidth,h=tip.offsetHeight;let x=e.clientX-w/2,y=e.clientY-h-14;x=Math.max(8,Math.min(innerWidth-w-8,x));if(y<8)y=e.clientY+18;tip.style.left=x+'px';tip.style.top=y+'px';
  clearTimeout(window._tipT);window._tipT=setTimeout(()=>tip.hidden=true,3500)});
+/* =====================================================================
+   v15 · QUALITÀ DATI: «SISTEMA IN AUTOMATICO»
+   Per ogni avviso l’app ragiona sui dati (calendario, compagni, date vicine,
+   valori identici) e propone la correzione più probabile, con il motivo e il
+   grado di sicurezza. «Sistema in automatico» le mostra tutte, le applica
+   insieme e tiene una copia per annullare.
+   ===================================================================== */
+const QF_N=s=>normH(s||'').replace(/[^a-z0-9]/g,'').replace(/^(fc|lr|ac|us|ssd|asd)/,'');
+const qfSameOpp=(a,b)=>{const x=QF_N(a),y=QF_N(b);return !!x&&!!y&&(x.includes(y)||y.includes(x))};
+const QF_KEYS=['min','dist','d1520','d2025','d25','acc3','vmax'];
+const qfSig=e=>QF_KEYS.map(k=>val(e,k)).join('|');
+const qfFilled=e=>Object.values(e.v||{}).filter(v=>num(v)!=null).length;
+function qfEntryOf(p,date,kind,except){return allEntries().filter(e=>e.p===p&&e.date===date&&e.kind===kind&&e.id!==except)}
+function qfSet(id,fn){const l=entryLoc(id);if(!l)return false;fn(l.w.entries[id]);invalidate();saveWeek(l.wk);return true}
+function qfTeamDays(wk){const m={};for(const e of weekEntries(wk))if(e.kind==='training'&&e.date)(m[e.date]=m[e.date]||new Set()).add(e.p);return m}
+
+/* restituisce {c:'sicuro'|'probabile', t:'cosa fa', w:'perché', run()} oppure null */
+function qFix(x){const e=x.e;if(!e)return null;const nm=pName(e.p);const t=x.t;
+ const live=()=>!!entryLoc(e.id);
+ const del=(c,w)=>({c,t:`Elimina la riga di ${nm} del ${dShort(e.date)}`,w,run:()=>live()&&entryDel(e.id)});
+ const move=(date,c,w,extra)=>({c,t:`Sposta ${nm}: dal ${dShort(e.date)} al ${dShort(date)}${extra?.lbl||''}`,w,run:()=>{if(!live())return false;entryMove(e.id,date);if(extra?.fn)qfSet(e.id,extra.fn);if(e.kind==='match')qfSet(e.id,z=>z.md='MD');return true}});
+ const ignore=(c,w,lbl)=>({c,t:lbl||'Segna come corretto (non lo segnala più)',w,run:()=>{S.settings.qIgnore={...(S.settings.qIgnore||{}),[qKey(x)]:new Date().toISOString().slice(0,10)};saveSettings();return true}});
+
+ if(/MD diverso/i.test(t)){const md=mdForDate(e.date);return {c:'sicuro',t:`Metti ${md} a ${nm} il ${dShort(e.date)}`,w:`La data è quella giusta per i compagni: il ${DOW_FULL[s2d(e.date).getDay()]} nel tuo schema è ${md}.`,run:()=>qfSet(e.id,z=>z.md=md)}}
+ if(/fuori dalla settimana/i.test(t))return move(e.date,'sicuro','La data è corretta ma la riga era salvata in un’altra settimana: la metto nella settimana giusta.');
+ if(/Dist\/min/i.test(t)){const d=val(e,'dist'),m=val(e,'min');return {c:'sicuro',t:`Ricalcola i m/min di ${nm}: ${fmt(d/m,1)}`,w:`${fmt(d)} m diviso ${fmt(m)}′. Il valore inserito era un refuso.`,run:()=>qfSet(e.id,z=>{z.v.dpm=+(d/m).toFixed(1)})}}
+ if(/Velocità massima anomala/i.test(t)){const v=val(e,'vmax');return {c:'probabile',t:`Togli la Vmax ${fmt(v,1)} km/h di ${nm} del ${dShort(e.date)}`,w:v>37?'Sopra i 37 km/h a 15 anni è quasi sempre un salto del segnale GPS: il resto della seduta resta.':'Troppo bassa per una seduta di più di 20 minuti: probabilmente il GPS non l’ha registrata bene.',run:()=>qfSet(e.id,z=>{delete z.v.vmax})}}
+
+ if(/Avversario diverso/i.test(t)){const cal=calMatches();const c=cal.find(m=>m.date===e.date);
+  const today=d2s(new Date());const cands=cal.filter(m=>m.date<=today&&m.date!==e.date&&qfSameOpp(m.opp,e.opp)&&Math.abs(s2d(m.date)-s2d(e.date))<=21*864e5).sort((a,b)=>Math.abs(s2d(a.date)-s2d(e.date))-Math.abs(s2d(b.date)-s2d(e.date)));
+  const others=allEntries().filter(z=>z.kind==='match'&&z.date===e.date&&z.p!==e.p);const okOthers=others.filter(z=>qfSameOpp(z.opp,c?.opp)).length;
+  for(const m of cands){const there=qfEntryOf(e.p,m.date,'match',e.id);
+   if(!there.length)return move(m.date,'probabile',`Contro ${m.opp} si è giocato il ${dShort(m.date)}${okOthers?` e il ${dShort(e.date)} gli altri ${okOthers} hanno ${c.opp}`:''}; ${nm} quel giorno non ha dati: la riga era finita nella partita sbagliata.`,{lbl:` (vs ${m.opp})`,fn:z=>z.opp=m.opp});
+   if(there.some(z=>qfSig(z)===qfSig(e)))return del('sicuro',`La stessa partita con ${m.opp} è già registrata il ${dShort(m.date)} con valori identici: questa è un doppione.`)}
+  if(c&&!qfEntryOf(e.p,e.date,'match',e.id).length)return {c:'probabile',t:`Correggi l’avversario di ${nm}: “${e.opp}” → “${c.opp}”`,w:`${cands.length?'':`Non c’è una partita con ${e.opp} vicina a questa data; `}il ${dShort(e.date)} si è giocato contro ${c.opp}${okOthers?` e così risulta per gli altri ${okOthers}`:''}.`,run:()=>qfSet(e.id,z=>z.opp=c.opp)};
+  return null}
+
+ if(/Dati identici per due giocatori/i.test(t)){const twin=allEntries().find(z=>z.id!==e.id&&z.p!==e.p&&z.date===e.date&&qfSig(z)===qfSig(e));
+  return del('probabile',`Ha gli stessi minuti e metri di ${twin?pName(twin.p):'un compagno'} fino all’ultima cifra: è un copia-incolla. Tengo la riga di ${twin?pName(twin.p):'chi è stato inserito per primo'} e tolgo la copia, così il dato falso non entra in medie, riferimenti e ACWR. Se ${nm} ha giocato, reinserisci i suoi dati veri.`)}
+
+ if(/Stessa seduta su due date/i.test(t)){const tw=allEntries().filter(z=>z.p===e.p&&z.kind===e.kind&&z.id!==e.id&&qfSig(z)===qfSig(e));if(!tw.length)return null;
+  const all2=[e,...tw].sort((a,b)=>a.date.localeCompare(b.date));const late=all2[all2.length-1];const first=all2[0];
+  return {c:'probabile',t:`Elimina la copia del ${dShort(late.date)} di ${nm}`,w:`Valori identici al ${dShort(first.date)}: di solito è la riga copiata più in basso nell’Excel, cioè quella con la data più recente. Tengo quella del ${dShort(first.date)}.`,run:()=>entryLoc(late.id)&&entryDel(late.id)}}
+
+ if(/Seduta doppia/i.test(t)){const tw=allEntries().filter(z=>z.id!==e.id&&z.p===e.p&&z.date===e.date&&z.kind===e.kind&&(e.kind!=='training'||z.md===e.md));if(!tw.length)return null;
+  if(tw.some(z=>qfSig(z)===qfSig(e)))return del('sicuro','È inserita due volte con gli stessi valori: tolgo il doppione.');
+  const best=[e,...tw].sort((a,b)=>qfFilled(b)-qfFilled(a)||(val(b,'min')||0)-(val(a,'min')||0))[0];if(best.id===e.id)return null;
+  return del('probabile',`Due righe diverse lo stesso giorno: tengo quella più completa (${qfFilled(best)} valori, ${fmt(val(best,'min'))}′) e tolgo questa (${qfFilled(e)} valori).`)}
+
+ if(/giorno della partita/i.test(t)){const td=qfTeamDays(e.wk);const has=d=>allEntries().some(z=>z.p===e.p&&z.date===d&&z.kind==='training'&&z.id!==e.id);
+  const free=Object.keys(td).filter(d=>d!==e.date&&!has(d)&&td[d].size>=2).sort((a,b)=>Math.abs(s2d(a)-s2d(e.date))-Math.abs(s2d(b)-s2d(e.date)));
+  const m=qfEntryOf(e.p,e.date,'match');
+  if(m.some(z=>qfSig(z)===qfSig(e)))return del('sicuro','Ha gli stessi valori della sua partita di quel giorno: è la partita registrata due volte come allenamento.');
+  if(free[0])return move(free[0],'probabile',`Quel giorno c’è la partita. Il ${dShort(free[0])} la squadra si è allenata (${td[free[0]].size} giocatori con dati) ma ${nm} non ha nessuna seduta: è il giorno più vicino a cui può appartenere.`);
+  if(!m.length){const c=calMatches().find(z=>z.date===e.date);return {c:'probabile',t:`Trasforma in partita: ${nm} vs ${c?.opp||'avversario'} del ${dShort(e.date)}`,w:`Quel giorno ${nm} non ha la partita registrata: la riga è la sua partita salvata come allenamento.`,run:()=>qfSet(e.id,z=>{z.kind='match';z.md='MD';if(c)z.opp=c.opp})}}
+  return null}
+
+ if(/solo giocatore/i.test(t)){const td=qfTeamDays(e.wk);const has=d=>allEntries().some(z=>z.p===e.p&&z.date===d&&z.kind==='training'&&z.id!==e.id);
+  for(const k of [-1,1]){const d=addDays(e.date,k);if(td[d]&&td[d].size>=3&&!has(d)&&!calMatches().some(c=>c.date===d))return move(d,'probabile',`Il ${dShort(d)} si è allenata la squadra (${td[d].size} giocatori) e ${nm} non ha dati: la data è sbagliata di un giorno.`)}
+  return ignore('probabile','Nessun allenamento di squadra nei giorni vicini in cui manca: è un lavoro individuale (recupero, differenziato).',`Tieni come lavoro individuale di ${nm} del ${dShort(e.date)}`)}
+
+ if(/Partita senza avversario/i.test(t)){const c=calMatches().find(m=>weekOfDate(m.date)===weekOfDate(e.date));
+  if(c&&!qfEntryOf(e.p,c.date,'match',e.id).length)return move(c.date,'probabile',`Nella stessa settimana in calendario c’è ${c.opp} il ${dShort(c.date)}.`,{lbl:` (vs ${c.opp})`,fn:z=>z.opp=c.opp});
+  return ignore('probabile','Non c’è nessuna partita in calendario quella settimana: la tengo come amichevole.',`Segna come amichevole`)}
+ return null}
+
+/* ---------- interfaccia ---------- */
+let QF_UNDO=null;
+function qfApply(list){const snap=clone(S.weeks),ign=clone(S.settings.qIgnore||{});let n=0;
+ for(const f of list){try{if(f.run()!==false)n++}catch(err){console.error(err)}}
+ const changed=Object.keys(S.weeks).filter(k=>JSON.stringify(S.weeks[k])!==JSON.stringify(snap[k]));const gone=Object.keys(snap).filter(k=>!S.weeks[k]);
+ QF_UNDO={snap,ign,wks:[...new Set([...changed,...gone])],n};invalidate();render();return n}
+function qfUndo(){if(!QF_UNDO)return;const {snap,ign,wks}=QF_UNDO;for(const k of wks){if(snap[k])S.weeks[k]=snap[k];else delete S.weeks[k];saveWeek(+k)}S.settings.qIgnore=ign;saveSettings();QF_UNDO=null;invalidate();render();toast('Correzioni annullate: i dati sono tornati com’erano.')}
+function qfModal(){const q=qualityIssues();const F=q.map(x=>({x,f:qFix(x)})).filter(o=>o.f);const man=q.length-F.length;
+ if(!F.length){toast('Non ci sono correzioni sicure da fare in automatico: restano da vedere a mano.');return}
+ const bg=document.createElement('div');bg.className='modal-bg';
+ bg.innerHTML=`<div class="modal" role="dialog" aria-modal="true" style="max-width:760px;width:calc(100vw - 32px);max-height:86vh;display:flex;flex-direction:column"><h3>Sistema in automatico</h3>
+  <p style="margin:0;color:var(--ink-2)">Ho analizzato ${q.length} avvisi confrontando calendario, compagni, giorni vicini e valori identici. Ecco cosa farei: togli la spunta a quello che non ti convince.${man?` ${man} avvis${man===1?'o resta':'i restano'} da vedere a mano.`:''}</p>
+  <div style="overflow:auto;display:flex;flex-direction:column;gap:8px;margin:6px -4px;padding:0 4px">${F.map((o,i)=>`<label class="qf-row"><input type="checkbox" data-qfi="${i}" checked><div><b>${esc(o.f.t)}</b><span class="qf-c ${o.f.c==='sicuro'?'ok':''}">${o.f.c}</span><small>${esc(o.x.t)}</small><p>${esc(o.f.w)}</p></div></label>`).join('')}</div>
+  <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span class="hint">Potrai annullare tutto con un tocco.</span><div class="row" style="gap:8px"><button class="btn" data-x="no">Annulla</button><button class="btn pri" data-x="ok">Applica ${F.length} correzioni</button></div></div></div>`;
+ const upd=()=>{const k=bg.querySelectorAll('[data-qfi]:checked').length;const b=bg.querySelector('[data-x="ok"]');b.textContent=`Applica ${k} correzion${k===1?'e':'i'}`;b.disabled=!k};
+ bg.addEventListener('change',upd);
+ bg.addEventListener('click',ev=>{const a=ev.target.closest('[data-x]')?.dataset.x;if(a==='no'||ev.target===bg){bg.remove();return}
+  if(a==='ok'){const sel=[...bg.querySelectorAll('[data-qfi]:checked')].map(c=>F[+c.dataset.qfi].f);bg.remove();const n=qfApply(sel);const left=qualityIssues().length;toast(`${n} correzioni fatte${left?` · ${left} avvisi rimasti`:' · nessun avviso rimasto'}. Puoi annullare dalla pagina.`)}});
+ document.body.appendChild(bg);upd()}
+
+document.head.insertAdjacentHTML('beforeend',`<style id="qf15">
+.qf-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid var(--line);background:var(--accent-soft)}
+.qf-bar p{margin:0;flex:1 1 280px;font-size:13px;color:var(--ink-2)}
+.qf-row{display:flex;gap:12px;align-items:flex-start;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);cursor:pointer}
+.qf-row input{margin-top:3px;flex:none;width:17px;height:17px}
+.qf-row b{font-size:14px}.qf-row small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}.qf-row p{margin:5px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.45}
+.qf-c{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;background:rgba(245,165,36,.18);color:#f5a524;vertical-align:1px}
+.qf-c.ok{background:rgba(52,211,153,.18);color:#34d399}
+:root[data-theme="light"] .qf-c{color:#9a6200}:root[data-theme="light"] .qf-c.ok{color:#08744d}
+.qf-prop{display:block;margin-top:6px;font-size:12.5px;color:var(--ink-2)}.qf-prop b{color:var(--ink)}
+</style>`);
+
+{const _qv=VIEWS.quality;VIEWS.quality=()=>{let h=_qv();const q=qualityIssues();const F=q.map(qFix);const n=F.filter(Boolean).length;
+ const bar=`<div class="qf-bar">${n?`<button type="button" class="btn pri" id="qfAll">✦ Sistema in automatico (${n})</button><p>Analizzo ogni avviso e propongo la correzione più probabile, con il motivo. Prima di applicare vedi l’elenco e puoi togliere quello che non ti convince.</p>`:`<p>${q.length?'Gli avvisi rimasti non hanno una correzione sicura: vanno visti a mano.':'Tutto in ordine.'}</p>`}${QF_UNDO?`<button type="button" class="btn" id="qfUndo">↶ Annulla le ultime ${QF_UNDO.n} correzioni</button>`:''}</div>`;
+ h=h.replace(/(<\/div>)(<div>)/,`$1${bar}$2`);
+ let i=0;h=h.replace(/<div class="qa-btns">/g,m=>{const f=F[i++];return f?`<div class="qa-btns"><button type="button" class="btn sm pri" data-qfone="${i-1}" title="${esc(f.w)}">Sistema</button>`:m});
+ i=0;h=h.replace(/(<p>[^<]*<\/p>)(<\/div><div class="qa-btns">)/g,(m,p,r)=>{const f=F[i++];return f?`${p}<span class="qf-prop">→ <b>${esc(f.t)}</b> <span class="qf-c ${f.c==='sicuro'?'ok':''}">${f.c}</span><br>${esc(f.w)}</span>${r}`:m});
+ return h}}
+document.addEventListener('click',ev=>{const t=ev.target.closest('#qfAll,#qfUndo,[data-qfone]');if(!t)return;
+ if(t.id==='qfAll'){qfModal();return}
+ if(t.id==='qfUndo'){qfUndo();return}
+ if(t.dataset.qfone!=null){const x=qualityIssues()[+t.dataset.qfone];const f=x&&qFix(x);if(!f)return;const n=qfApply([f]);if(n)toast('Fatto: '+f.t+'. Puoi annullare dalla pagina.')}});
 
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
