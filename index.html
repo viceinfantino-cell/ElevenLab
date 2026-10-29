@@ -4257,10 +4257,19 @@ const SYG={
   return gfetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+b},body})}};
 
 /* ---------- unione ---------- */
+function syUnionable(p){return p.startsWith(coll('weeks')+'/w')||p.startsWith(coll('wellness')+'/w')||p==='app/'+calDoc()}
+function syUnion(p,win,lose,W){const out=JSON.parse(JSON.stringify(win));
+ if(p===('app/'+calDoc())){out.matches=out.matches||{};for(const [id,m] of Object.entries(lose.matches||{})){const w=out.matches[id];if(!w){out.matches[id]=m;continue}const em=v=>v==null||v===''||(typeof v==='object'&&!Object.keys(v).length);for(const k of ['res','lineup','manual','txg','tac','video','formation'])if(em(w[k])&&!em(m[k]))w[k]=m[k];if(m.lineup&&w.lineup)for(const [pid,v] of Object.entries(m.lineup))if(em(w.lineup[pid]))w.lineup[pid]=v}return out}
+ if(lose.entries){const ids=new Set();for(const [q,d] of Object.entries(W))if(q.startsWith(coll('weeks')+'/w'))for(const id of Object.keys(d?.entries||{}))ids.add(id);out.entries=out.entries||{};for(const [id,e] of Object.entries(lose.entries))if(!ids.has(id))out.entries[id]=e}
+ for(const f of ['avail','dur','mins'])if(lose[f])out[f]={...lose[f],...(out[f]||{})};
+ if(lose.days){out.days=out.days||{};for(const [d,day] of Object.entries(lose.days))out.days[d]={...(day||{}),...(out.days[d]||{})}}
+ return out}
 function syMerge(F,L){const key=syBaseKey();const R=F.docs||(F.docs={});F.base=F.base||{};const B=F.base[key]||{};
  const keys=new Set([...Object.keys(L),...Object.keys(R),...Object.keys(B)]);let pull=0,push=0,conf=0;const claudeWins=sySide()==='claude';
  SY.applying=true;try{for(const p of keys){if(!syKnown(p))continue;const hl=syH(L[p]),hr=syH(R[p]),hb=B[p]||null;if(hl===hr)continue;
-  let take;if(hl===hb)take='r';else if(hr===hb)take='l';else{conf++;take=claudeWins?'l':'r'}
+  let take;if(hl===hb)take='r';else if(hr===hb)take='l';else{conf++;take=claudeWins?'l':'r';
+   /* conflitto su settimane, wellness o calendario: unisco riga per riga invece di buttare un lato */
+   const W=claudeWins?L:R,Lo=claudeWins?R:L;if(W[p]&&Lo[p]&&syUnionable(p)){const m=syUnion(p,W[p],Lo[p],W);R[p]=m;if(syH(L[p])!==syH(m)){syApply(p,m);pull++}push++;continue}}
   if(take==='r'){syApply(p,R[p]??null);pull++}else{if(L[p]!=null)R[p]=L[p];else delete R[p];push++}}}finally{SY.applying=false}
  const nb={};for(const p of Object.keys(R))if(syKnown(p))nb[p]=syH(R[p]);const changed=stableStr(nb)!==stableStr(B);F.base[key]=nb;F.seen={...(F.seen||{}),[key]:new Date().toISOString()};
  if(pull)invalidate();return {pull,push,conf,write:push>0||changed}}
@@ -5126,10 +5135,10 @@ async function rfVersion(){if(!S.local||!('serviceWorker' in navigator))return f
 async function appRefresh(){if(RF.busy)return;RF.busy=true;rfUI();let msg='';
  try{if(typeof flushAll==='function')await flushAll();
   if(S.db){if(!S.settings.drvSync?.on){S.settings.drvSync={on:true};saveSettings()}const p0=SY.st?.stats?.pull;await syForm();await syncNow({force:true});msg=SY.st.err?'Drive: '+SY.st.err:(SY.st.stats?.pull?'':'Tutto aggiornato.')}
-  else if(S.local){const c=syLS();if(!c.id){msg='Collega prima Google Drive in Dati → Sincronizzazione.'}
+  else if(S.local){const nv0=await rfVersion();if(nv0){toast('C’è una versione nuova dell’app: la carico, poi tocca di nuovo Aggiorna.');setTimeout(()=>location.reload(),1300);return}const c=syLS();if(!c.id){msg='Collega prima Google Drive in Dati → Sincronizzazione.'}
    else{if(!syTok()){try{await syLogin()}catch(e){msg=syErr(e)}}
     if(syTok()){await syncNow({force:true});msg=SY.st.err?'Drive: '+SY.st.err:(SY.st.stats?.pull?'':'Tutto aggiornato: nessuna novità dagli altri dispositivi.')}}
-   const nv=await rfVersion();if(nv){toast('C’è una versione nuova dell’app: la carico…');setTimeout(()=>location.reload(),1300);return}}
+}
  }catch(e){msg=typeof syErr==='function'?syErr(e):String(e?.message||e)}
  finally{RF.busy=false;rfUI();render()}
  if(msg)toast(msg)}
