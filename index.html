@@ -4984,6 +4984,173 @@ document.addEventListener('click',ev=>{const t=ev.target.closest('#qfAll,#qfUndo
  if(t.id==='qfAll'){qfModal();return}
  if(t.id==='qfUndo'){qfUndo();return}
  if(t.dataset.qfone!=null){const x=qualityIssues()[+t.dataset.qfone];const f=x&&qFix(x);if(!f)return;const n=qfApply([f]);if(n)toast('Fatto: '+f.t+'. Puoi annullare dalla pagina.')}});
+/* =====================================================================
+   v16 · OBIETTIVI DELLA SETTIMANA MODIFICABILI
+   Di base: martedì aerobico e recupero, mercoledì forza, giovedì potenza
+   metabolica, venerdì rapidità e velocità (periodizzazione tattica: Martín-García
+   2018, Malone, Douchet 2024; microcicli corti: Gualtieri 2024; potenza
+   metabolica: Osgnach 2010; carico cronico: Gabbett 2016).
+   Il tasto «Modifica» cambia l’obiettivo di un singolo giorno, mette riposo,
+   rinvia o sposta la partita e propone la settimana in base alle partite.
+   ===================================================================== */
+SO_PROF.aer.l='Aerobico e recupero';SO_PROF.for.l='Forza';SO_PROF.pm.l='Potenza metabolica';SO_PROF.vel.l='Rapidità e velocità';
+SO_PROF.pm.d='Giorno di durata (MD-3): potenza metabolica alta, cioè intensità data da corsa, accelerazioni e frenate insieme; resistenza specifica in spazi ampi, partite a campo medio-grande e intermittenti; volume e corsa veloce più alti della settimana.';
+SO_REFS.push(
+ ['Osgnach et al., 2010 · Med Sci Sports Exerc','Potenza metabolica: costo energetico di corsa, accelerazioni e frenate insieme; misura l’intensità reale del calcio meglio della sola velocità.','https://pubmed.ncbi.nlm.nih.gov/20010116/'],
+ ['Gualtieri et al., 2024 · Int J Sports Physiol Perform','Microcicli di 3, 4 e 5 giorni: più è corto, meno impatto muscolare (meno sprint e frenate); il carico scende sempre avvicinandosi alla partita.','https://oars.uos.ac.uk/3753'],
+ ['Gabbett, 2016 · Br J Sports Med','Paradosso carico-infortuni: un carico cronico alto e costruito gradualmente protegge; i cali seguiti da picchi improvvisi (ACWR alto) aumentano il rischio.','https://pmc.ncbi.nlm.nih.gov/articles/PMC4789704']);
+const WK_OPT=[['aer','Aerobico e recupero'],['for','Forza'],['pm','Potenza metabolica'],['vel','Rapidità e velocità'],['free','Allenamento senza obiettivo'],['off','Riposo']];
+const WK_SHORT={aer:'Aerobico',for:'Forza',pm:'Pot. metab.',vel:'Rapidità',free:'Allen.',off:'Riposo'};
+
+/* partite rinviate: non contano finché non hanno la data del recupero */
+const calMatchesAll=calMatches;
+calMatches=function(){return calMatchesAll().filter(c=>!c.rinv)};
+/* riposo / allenamento libero decisi per un singolo giorno */
+{const _so=soOfDate;soOfDate=function(d){const o=S.analisi?.[d]?.obj;if(o==='off'||o==='free')return null;return _so(d)}}
+{const _it=isTrainDay;isTrainDay=function(d){const o=S.analisi?.[d]?.obj;if(o==='off')return false;if(o==='free'||SO_PROF[o])return true;return _it(d)}}
+function wkTmpl(d){const dow=s2d(d).getDay();if(!wkCfg().train.includes(dow))return 'off';return soPlan()[dow]&&SO_PROF[soPlan()[dow]]?soPlan()[dow]:'free'}
+function wkCur(d){const o=S.analisi?.[d]?.obj;if(o==='off'||o==='free'||SO_PROF[o])return o;return wkTmpl(d)}
+
+/* proposta automatica in base alle partite vere (calendario, rinvii esclusi) */
+function wkAuto(wk){const a=weekStart(wk);const M=calMatches().map(c=>c.date);const tr=wkCfg().train;const out={};const hasM=M.some(m=>m>=a&&m<=addDays(a,6));
+ for(let i=0;i<7;i++){const d=addDays(a,i);const dow=s2d(d).getDay();if(M.includes(d)){out[d]={v:'match'};continue}
+  const prev=M.filter(m=>m<d).pop(),next=M.find(m=>m>d);const dp=prev?Math.round((s2d(d)-s2d(prev))/864e5):99,dn=next?Math.round((s2d(next)-s2d(d))/864e5):99;
+  let v,w;
+  if(dp===1){v='off';w='Giorno dopo la partita: riposo (rigenerazione solo per chi ha giocato).'}
+  else if(dn===1){v=tr.includes(dow)?'vel':'off';w=v==='off'?'Vigilia della partita: riposo.':'Vigilia della partita: attivazione breve, rapidità e pochi sprint, niente fatica.'}
+  else if(dp===2){v='aer';w='48 ore dopo la partita: aerobico e recupero per i titolari, compensazione per chi ha giocato meno di 45′.'}
+  else if(dn===2){v='vel';w='Due giorni alla partita: basso volume, sprint da freschi con recupero completo, rapidità.'}
+  else if(dp===3){v='for';w='Tre giorni dopo la partita e lontano dalla prossima: giorno di tensione (forza, acc/dec, cambi di direzione).'}
+  else if(dn===3){v='pm';w='Tre giorni alla partita: il giorno più lungo e intenso della settimana (potenza metabolica, spazi ampi).'}
+  else if(!hasM&&dow===(wkCfg().matchDow+6)%7){v='pm';w='Settimana senza partita: partita a tema o amichevole al posto della gara, così il carico cronico non cala e al rientro non hai un picco di ACWR (Gabbett 2016).'}
+  else if(!hasM&&dow===wkCfg().matchDow){v='off';w='Settimana senza partita: riposo.'}
+  else{v=wkTmpl(d);w='Lontano dalle partite: settimana tipo.'}
+  out[d]={v,w}}
+ return out}
+
+/* MD vero quando la settimana non è regolare (recupero infrasettimanale, partita spostata o rinviata) */
+{const _md=mdForDate;mdForDate=function(s){if(!s)return _md(s);return memo('mdr:'+s,()=>{const t=s2d(s);const win=x=>Math.abs(s2d(x)-t)<=7*864e5;const md=wkCfg().matchDow;
+ const irr=calMatches().some(c=>win(c.date)&&s2d(c.date).getDay()!==md)||calMatchesAll().some(c=>c.rinv&&win(c.date));if(!irr)return _md(s);
+ const M=calMatches().map(c=>c.date);if(M.includes(s))return 'MD';const prev=M.filter(m=>m<s).pop(),next=M.find(m=>m>s);
+ const dp=prev?Math.round((t-s2d(prev))/864e5):99,dn=next?Math.round((s2d(next)-t)/864e5):99;
+ if(dn<dp&&dn<=4)return 'MD-'+dn;if(dp<=3)return 'MD+'+dp;if(dn<=4)return 'MD-'+dn;if(dp>7&&dn>7)return _md(s);return dn<dp?'MD-'+dn:'MD+'+dp})}}
+
+/* ---------- finestra «Modifica settimana» ---------- */
+function wkEditOpen(wk){S.ui.wke={wk,sel:{},why:{}};const a=weekStart(wk);for(let i=0;i<7;i++){const d=addDays(a,i);S.ui.wke.sel[d]=wkCur(d)}wkEditDraw()}
+function wkEditDraw(){let bg=document.getElementById('wkeBg');if(!bg){bg=document.createElement('div');bg.id='wkeBg';bg.className='modal-bg';document.body.appendChild(bg)}
+ const E=S.ui.wke;const a=weekStart(E.wk);const days=[0,1,2,3,4,5,6].map(i=>addDays(a,i));const all=calMatchesAll();
+ const row=d=>{const dow=s2d(d).getDay();const m=all.find(c=>c.date===d);const day=`<div class="wke-d"><b>${esc(DOW_FULL[dow].replace(/^./,c=>c.toUpperCase()))}</b><small>${esc(dShort(d))} · ${esc(mdForDate(d))}</small></div>`;
+  if(m&&!m.rinv)return `<div class="wke-r match">${day}<div class="wke-m"><b>Partita vs ${esc(m.opp)}</b><div class="row" style="gap:6px;flex-wrap:wrap"><button type="button" class="btn sm" data-wkrinv="${m.id}">Rinviata</button><label class="row" style="gap:6px;align-items:center;font-size:12.5px">Sposta al <input type="date" class="inp" data-wkmove="${m.id}" value="${m.date}" style="padding:3px 6px"></label></div></div></div>`;
+  const v=E.sel[d];const P2=SO_PROF[v];const w=E.why[d];const tm=wkTmpl(d);
+  return `<div class="wke-r" style="--oc:${P2?.c||(v==='off'?'var(--line-2)':'var(--muted)')}">${day}<div class="wke-s"><select class="inp" data-wkday="${d}">${WK_OPT.map(([k,l])=>`<option value="${k}" ${k===v?'selected':''}>${l}${k===tm?' · settimana tipo':''}</option>`).join('')}</select><small>${w?'<b>Proposta:</b> '+esc(w):P2?esc(P2.d.split(/(?<=\.)\s/)[0]):v==='off'?'Nessun allenamento.':'Seduta senza obiettivo fisico (tecnica, tattica, video).'}</small></div>${m?.rinv?'':''}</div>`};
+ const rinv=all.filter(c=>c.rinv);
+ bg.innerHTML=`<div class="modal wke" role="dialog" aria-modal="true" aria-label="Modifica la settimana"><div class="row" style="justify-content:space-between;align-items:center;gap:8px"><h3 style="margin:0">Obiettivi della settimana</h3><div class="row" style="gap:6px;align-items:center"><button type="button" class="btn sm" data-wkenav="-1" aria-label="Settimana precedente">‹</button><b style="font-size:13px">${esc(wkLabel(E.wk))}</b><button type="button" class="btn sm" data-wkenav="1" aria-label="Settimana successiva">›</button></div></div>
+ <p class="hint" style="margin:0">Di base: martedì aerobico e recupero, mercoledì forza, giovedì potenza metabolica, venerdì rapidità e velocità. Cambia solo i giorni che servono: gli altri restano come la settimana tipo.</p>
+ <div class="wke-list">${days.map(row).join('')}</div>
+ ${rinv.length?`<div class="wke-rinv"><b>Partite rinviate</b>${rinv.map(c=>`<div class="row" style="gap:8px;align-items:center;flex-wrap:wrap"><span>G${c.g||''} vs ${esc(c.opp)} (era il ${esc(dShort(c.date))})</span><label class="row" style="gap:6px;align-items:center;font-size:12.5px">Data del recupero <input type="date" class="inp" data-wkrec="${c.id}" style="padding:3px 6px"></label><button type="button" class="btn sm ghost" data-wkunr="${c.id}">Annulla rinvio</button></div>`).join('')}</div>`:''}
+ <div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn" id="wkeAuto">✦ Proponi in base alle partite</button><button type="button" class="btn ghost" id="wkeTmpl">Torna alla settimana tipo</button></div>
+ <label class="row" style="gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="wkeAsTmpl"> Usa questa come settimana tipo per tutte le settimane</label>
+ <div class="row" style="justify-content:flex-end;gap:8px"><button type="button" class="btn" data-wkex="no">Chiudi</button><button type="button" class="btn pri" id="wkeSave">Salva</button></div></div>`}
+function wkEditSave(){const E=S.ui.wke;if(!E)return;const asT=document.getElementById('wkeAsTmpl')?.checked;
+ if(asT){const so={...(S.settings.sessObj||{})};const train=[];for(const [d,v] of Object.entries(E.sel)){const dow=s2d(d).getDay();if(v!=='off')train.push(dow);so[dow]=SO_PROF[v]?v:null}
+  S.settings.sessObj=so;S.settings.week={...(S.settings.week||{}),train:train.filter(x=>x!==wkCfg().matchDow).sort()};saveSettings()}
+ let n=0;const md=new Set(calMatches().map(c=>c.date));for(const [d,v] of Object.entries(E.sel)){if(md.has(d))continue;const tm=wkTmpl(d);const a=S.analisi[d];
+  if(v===tm){if(a&&'obj' in a){delete a.obj;if(Object.keys(a).filter(k=>k!=='date').length)S.analisi[d]=a;else delete S.analisi[d];soSave(d);n++}}
+  else if(a?.obj!==v){S.analisi[d]={...(a||{date:d}),date:d,obj:v};soSave(d);n++}}
+ document.getElementById('wkeBg')?.remove();S.ui.wke=null;invalidate();render();toast(asT?'Settimana tipo aggiornata.':n?'Obiettivi della settimana salvati.':'Nessuna modifica.')}
+document.addEventListener('click',ev=>{const t=ev.target.closest('[data-wkedit],[data-wkenav],#wkeAuto,#wkeTmpl,#wkeSave,[data-wkex],[data-wkrinv],[data-wkunr],#wkeBg');if(!t)return;const E=S.ui.wke;
+ if(t.dataset.wkedit!=null){wkEditOpen(+t.dataset.wkedit||S.ui.wk);return}
+ if(t.id==='wkeBg'){if(ev.target===t){t.remove();S.ui.wke=null}return}
+ if(!E)return;
+ if(t.dataset.wkex){document.getElementById('wkeBg')?.remove();S.ui.wke=null;return}
+ if(t.dataset.wkenav){wkEditOpen(E.wk+(+t.dataset.wkenav));return}
+ if(t.id==='wkeAuto'){const A=wkAuto(E.wk);for(const [d,o] of Object.entries(A))if(o.v!=='match'){E.sel[d]=o.v;E.why[d]=o.w}wkEditDraw();return}
+ if(t.id==='wkeTmpl'){for(const d of Object.keys(E.sel))E.sel[d]=wkTmpl(d);E.why={};wkEditDraw();return}
+ if(t.id==='wkeSave'){wkEditSave();return}
+ if(t.dataset.wkrinv){const c=S.calendar.matches[t.dataset.wkrinv];if(!c)return;c.rinv=true;saveCalendar();invalidate();const A=wkAuto(E.wk);for(const [d,o] of Object.entries(A))if(o.v!=='match'){E.sel[d]=o.v;E.why[d]=o.w}wkEditDraw();render();toast(`Partita con ${c.opp} rinviata: ho riproposto gli obiettivi della settimana, controlla e salva.`);return}
+ if(t.dataset.wkunr){const c=S.calendar.matches[t.dataset.wkunr];if(!c)return;delete c.rinv;saveCalendar();invalidate();wkEditDraw();render();return}});
+document.addEventListener('change',ev=>{const t=ev.target;const E=S.ui.wke;if(!E)return;
+ if(t.dataset.wkday){E.sel[t.dataset.wkday]=t.value;delete E.why[t.dataset.wkday];wkEditDraw();return}
+ if(t.dataset.wkmove||t.dataset.wkrec){const id=t.dataset.wkmove||t.dataset.wkrec;const c=S.calendar.matches[id];if(!c||!t.value)return;const old=c.date;c.date=t.value;delete c.rinv;saveCalendar();invalidate();
+  const nw=weekOfDate(t.value);toast(`Partita con ${c.opp} spostata al ${dShort(t.value)}: ho riproposto gli obiettivi, controlla e salva.`);E.wk=nw;const a=weekStart(nw);E.sel={};E.why={};for(let i=0;i<7;i++){const d=addDays(a,i);E.sel[d]=wkCur(d)}const A=wkAuto(nw);for(const [d,o] of Object.entries(A))if(o.v!=='match'){E.sel[d]=o.v;E.why[d]=o.w}wkEditDraw();render()}});
+
+/* ---------- striscia della settimana con «Modifica» ---------- */
+function wkPlanCard(wk){const a=weekStart(wk);const days=[0,1,2,3,4,5,6].map(i=>addDays(a,i));const today=d2s(new Date());
+ const cells=days.map(d=>{const m=calMatches().find(c=>c.date===d);const v=wkCur(d);const P2=SO_PROF[v];const ov=S.analisi?.[d]?.obj&&S.analisi[d].obj!==wkTmpl(d);
+  const st=m?'background:var(--club);color:#fff':P2?`background:${P2.c};color:#071226`:'';
+  return `<div class="${d===today?'on':''}"><span>${esc(DOW_S[s2d(d).getDay()]).toUpperCase()} ${esc(dShort(d).split(' ')[0])}</span><b style="${st}">${m?'MD':mdForDate(d)==='MD'?'—':esc(mdForDate(d))}</b><span>${m?esc(m.opp):esc(WK_SHORT[v]||'')}${ov?' ✎':''}</span></div>`}).join('');
+ const rv=calMatchesAll().filter(c=>c.rinv&&c.date>=a&&c.date<=days[6]);
+ return `<section class="card wkp"><div class="card-h"><h2>Obiettivi della settimana</h2><button type="button" class="btn sm pri" data-wkedit="${wk}">✎ Modifica</button><span class="sub">${rv.length?`Partita con ${esc(rv[0].opp)} rinviata · `:''}✎ = giorno cambiato rispetto alla settimana tipo</span></div><div class="card-b"><div class="bc-days">${cells}</div></div></section>`}
+{const _d=V2.dashboard;V2.dashboard=()=>wkPlanCard(S.ui.wk)+_d()}
+{const _w=V8.aWeek;V8.aWeek=()=>{const h=_w();return h?wkPlanCard(S.ui.wk)+h:h}}
+{const _h=V9.head;V9.head=()=>{const h=_h();return h.replace(/(<section class="bc-week" aria-label="La settimana"><h3)>([^<]*)<\/h3>/,`$1 style="display:flex;align-items:center;gap:10px">$2<button type="button" class="btn sm" data-wkedit="${weekOfDate(d2s(new Date()))}" style="margin-left:auto;font-family:var(--f-body);letter-spacing:0;text-transform:none">✎ Modifica</button></h3>`)}}
+{const _s=V7.sedute;V7.sedute=()=>{const h=_s();if((S.ui.soSub||'seduta')!=='seduta')return h;const wk=weekOfDate(S.ui.soDate||soDefDate());return h.replace(/(<button class="btn sm" data-sowk="1"[^>]*>›<\/button>)/,`$1<button type="button" class="btn sm pri" data-wkedit="${wk}" style="margin-left:8px">✎ Modifica settimana</button>`)}}
+/* calendario: rinviate in evidenza */
+{const _c=V5.calendario;V5.calendario=()=>{const h=_c();if(S.ui.match)return h;const rv=calMatchesAll().filter(c=>c.rinv);if(!rv.length)return h;
+ return `<section class="card" style="border-left:4px solid var(--club)"><div class="card-h"><h2>Partite rinviate</h2><span class="sub">Non contano per MD, riferimenti e obiettivi finché non metti la data del recupero.</span></div><div class="card-b" style="display:flex;flex-direction:column;gap:8px">${rv.map(c=>`<div class="row" style="gap:10px;align-items:center;flex-wrap:wrap"><b>G${c.g||''} vs ${esc(c.opp)}</b><span class="hint">era il ${esc(dShort(c.date))}</span><button type="button" class="btn sm pri" data-wkedit="${weekOfDate(c.date)}">Metti la data del recupero</button></div>`).join('')}</div></section>`+h}}
+
+document.head.insertAdjacentHTML('beforeend',`<style id="wk16">
+.wke{max-width:640px;width:calc(100vw - 32px);max-height:90vh;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.wke-list{display:flex;flex-direction:column;gap:6px}
+.wke-r{display:grid;grid-template-columns:118px minmax(0,1fr);gap:12px;align-items:start;padding:9px 11px;border:1px solid var(--line);border-left:4px solid var(--oc,var(--line-2));border-radius:10px;background:var(--surface-2)}
+.wke-r.match{--oc:var(--club);background:rgba(226,54,75,.10)}
+.wke-d{display:flex;flex-direction:column}.wke-d b{font-size:14px}.wke-d small{color:var(--muted);font-size:11.5px}
+.wke-s{display:flex;flex-direction:column;gap:5px}.wke-s select{width:100%}.wke-s small{font-size:12px;color:var(--ink-2);line-height:1.4}
+.wke-m{display:flex;flex-direction:column;gap:6px}
+.wke-rinv{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:10px;background:rgba(226,54,75,.10);font-size:13px}
+.wkp .bc-days b{height:30px}
+@media (max-width:640px){.wke-r{grid-template-columns:1fr;gap:6px}}
+</style>`);
+/* =====================================================================
+   v18 · TASTO «AGGIORNA»
+   In fondo alla barra laterale e in alto a destra sul telefono: salva,
+   invia le modifiche a Drive, scarica quelle fatte sull'altro dispositivo
+   (Mac ↔ telefono ↔ claude.ai), rilegge il Form e, sull'app GitHub,
+   controlla se c'è una versione nuova dell'app.
+   Un pallino rosso avvisa se ci sono modifiche non ancora inviate.
+   ===================================================================== */
+const RF={busy:false};
+function rfDirty(){try{return !!localStorage.getItem('el-sync-dirty')}catch(e){return false}}
+function rfSetDirty(v){try{v?localStorage.setItem('el-sync-dirty','1'):localStorage.removeItem('el-sync-dirty')}catch(e){}}
+{const _md=markDirty;markDirty=function(path,get){const r=_md(path,get);try{if(S.local&&!SY.applying&&syKnown(path)){rfSetDirty(1);rfUI()}}catch(e){}return r}}
+{const _sn=syncNow;syncNow=async function(o){const r=await _sn(o);try{if(!SY.st.err&&SY.st.stats?.t&&Date.now()-SY.st.stats.t<60000)rfSetDirty(0)}catch(e){}rfUI();return r}}
+function rfUI(){const dirty=S.local&&rfDirty();const busy=RF.busy||SY.st?.busy;const c=typeof syLS==='function'?syLS():{};
+ let b=document.getElementById('refreshBtn');const foot=document.querySelector('.side-foot');
+ if(!b&&foot){b=document.createElement('button');b.type='button';b.id='refreshBtn';foot.prepend(b)}
+ if(b){b.className='rf-btn'+(busy?' busy':'')+(dirty?' dirty':'');b.innerHTML=`<span class="rf-i" aria-hidden="true">⟳</span><span><b>${busy?'Aggiorno…':'Aggiorna dati'}</b><small>${dirty?'modifiche da inviare':S.local&&!c.id?'Drive non collegato':'ultimo: '+(typeof syAgo==='function'?syAgo(c.last||SY.st?.stats?.t):'')}</small></span>`;b.title='Invia le modifiche e scarica quelle fatte sugli altri dispositivi'}
+ let m=document.getElementById('mRefresh');const top=document.querySelector('.mtop');
+ if(!m&&top){m=document.createElement('button');m.type='button';m.id='mRefresh';m.setAttribute('aria-label','Aggiorna dati');top.appendChild(m)}
+ if(m){m.className='rf-m'+(busy?' busy':'')+(dirty?' dirty':'');m.innerHTML='<span aria-hidden="true">⟳</span>'}}
+async function rfVersion(){if(!S.local||!('serviceWorker' in navigator))return false;try{const reg=await navigator.serviceWorker.getRegistration();if(reg)await reg.update();
+ const t=await (await fetch('./sw.js',{cache:'no-store'})).text();const nv=(t.match(/elevenlab-v\d+/)||[])[0];const ks=await caches.keys();if(nv&&ks.length&&!ks.includes(nv))return nv}catch(e){}return false}
+async function appRefresh(){if(RF.busy)return;RF.busy=true;rfUI();let msg='';
+ try{if(typeof flushAll==='function')await flushAll();
+  if(S.db){if(!S.settings.drvSync?.on){S.settings.drvSync={on:true};saveSettings()}const p0=SY.st?.stats?.pull;await syForm();await syncNow({force:true});msg=SY.st.err?'Drive: '+SY.st.err:(SY.st.stats?.pull?'':'Tutto aggiornato.')}
+  else if(S.local){const c=syLS();if(!c.id){msg='Collega prima Google Drive in Dati → Sincronizzazione.'}
+   else{if(!syTok()){try{await syLogin()}catch(e){msg=syErr(e)}}
+    if(syTok()){await syncNow({force:true});msg=SY.st.err?'Drive: '+SY.st.err:(SY.st.stats?.pull?'':'Tutto aggiornato: nessuna novità dagli altri dispositivi.')}}
+   const nv=await rfVersion();if(nv){toast('C’è una versione nuova dell’app: la carico…');setTimeout(()=>location.reload(),1300);return}}
+ }catch(e){msg=typeof syErr==='function'?syErr(e):String(e?.message||e)}
+ finally{RF.busy=false;rfUI();render()}
+ if(msg)toast(msg)}
+document.addEventListener('click',ev=>{const t=ev.target.closest('#refreshBtn,#mRefresh');if(!t)return;ev.preventDefault();ev.stopPropagation();appRefresh()},true);
+{const _su=syUI;syUI=function(){const r=_su.apply(this,arguments);try{rfUI()}catch(e){}return r}}
+{const _rn=renderNav;renderNav=function(){const r=_rn.apply(this,arguments);try{rfUI()}catch(e){}return r}}
+setInterval(()=>{try{rfUI()}catch(e){}},60000);
+document.head.insertAdjacentHTML('beforeend',`<style id="rf18">
+.rf-btn{width:100%;display:flex!important;align-items:center;justify-content:flex-start!important;gap:10px!important;padding:9px 12px!important;border-radius:12px!important;background:var(--accent)!important;border:0!important;color:#fff!important;text-align:left;position:relative}
+.rf-btn b{display:block;font-size:13.5px}.rf-btn small{display:block;font-size:11px;opacity:.85;font-weight:500}
+.rf-i{font-size:20px;line-height:1;display:inline-block}
+.rf-btn.busy .rf-i,.rf-m.busy span{animation:rfspin 1s linear infinite}
+.rf-btn.dirty::after,.rf-m.dirty::after{content:'';position:absolute;top:6px;right:8px;width:9px;height:9px;border-radius:50%;background:var(--club);box-shadow:0 0 0 2px var(--surface)}
+.rf-m{margin-left:auto;position:relative;width:38px;height:38px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface-2);color:var(--ink);font-size:19px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.rf-m.dirty::after{top:4px;right:4px}
+.mtop #mtopSub{flex:1}
+@media (max-width:900px){#side{padding-bottom:calc(78px + env(safe-area-inset-bottom,0px))!important}}
+@keyframes rfspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.rf-btn.busy .rf-i,.rf-m.busy span{animation:none}}
+</style>`);
+setTimeout(()=>{try{rfUI()}catch(e){}},500);
 
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
