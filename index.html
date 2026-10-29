@@ -5184,7 +5184,10 @@ function cwTot(D){const t={};const sum=k=>{const v=D.map(x=>x[k]).filter(x=>x!=n
  const vm=D.map(x=>x.vmax).filter(x=>x!=null);t.vmax=vm.length?Math.max(...vm):null;t.rpe=avg('rpe');t.rec=avg('rec');
  const pw=D.reduce((a,x)=>a+(x.pmW||0),0);t.pm=pw?D.reduce((a,x)=>a+(x.pm!=null?x.pm*x.pmW:0),0)/pw:null;t.dpm=t.min&&t.dist!=null?t.dist/t.min:null;
  t.n=D.filter(x=>x.gps&&!x.match).length;t.nm=D.filter(x=>x.match).length;t.days=D.length;return t}
-function cwPeriod(){const wk=S.ui.wk;const N=Math.max(1,Math.min(4,+S.ui.cwN||1));const wks=[];for(let i=N-1;i>=0;i--)wks.push(wk-i);const days=wks.flatMap(w=>dayList(w));return {wk,N,wks,days}}
+function cwSel(){let W=(S.ui.cwW||[]).filter(w=>Number.isInteger(w));if(!W.length){const n=Math.max(1,Math.min(4,+S.ui.cwN||1));W=[];for(let i=n-1;i>=0;i--)W.push(S.ui.wk-i)}return [...new Set(W)].sort((a,b)=>a-b)}
+function cwPeriod(){const wks=cwSel();const wk=wks[wks.length-1];const N=wks.length;const days=wks.flatMap(w=>dayList(w));const cons=wks.every((w,i)=>!i||w===wks[i-1]+1);return {wk,N,wks,days,cons}}
+function cwPerLabel(P0){return P0.N===1?wkLabel(P0.wk):P0.cons?`${P0.N} settimane · ${dShort(P0.days[0])} – ${dShort(P0.days[P0.days.length-1])}`:`${P0.N} settimane · ${P0.wks.map(w=>'S'+w).join(', ')}`}
+function cwWeekList(){const now=todayWeek();const s=new Set([...weeksWithData(),S.ui.wk,...(S.ui.cwW||[])]);return [...s].filter(w=>w<=now&&w>=-1).sort((a,b)=>a-b)}
 function cwGroups(pid,P0){return P0.N===1?P0.days.map(d=>({l:`${DOW_S[s2d(d).getDay()]} ${s2d(d).getDate()}`,lt:`${DOW_FULL[s2d(d).getDay()]} ${dShort(d)}`,d,t:cwDay(pid,d)})):P0.wks.map(w=>({l:'S'+w,lt:wkLabel(w),w,t:cwTot(dayList(w).map(d=>cwDay(pid,d)))}))}
 function cwBars(GA,GB,k,dec,nA,nB){const n=GA.length;const W=1000,H=230,L=46,R=10,T=14,Bm=34,iw=W-L-R,ih=H-T-Bm;const all=[...GA,...GB].map(x=>x.t[k]).filter(v=>v!=null);if(!all.length)return '<div class="empty">Nessun dato per questo parametro nel periodo.</div>';
  const mx=niceMax(Math.max(...all)*1.05);const y=v=>T+ih-v/mx*ih;const gw=iw/n,bw=Math.min(38,gw*.34);let g='';
@@ -5208,8 +5211,9 @@ V10.cmpWeek=()=>{const P0=cwPeriod();const {wk,N,wks,days}=P0;const ps=players()
  const diff=(va,vb)=>{if(va==null||vb==null||!va)return '';const dlt=vb-va;const pc=dlt/va*100;return `<span class="cw-d ${Math.abs(pc)<10?'':dlt>0?'up':'dn'}">${dlt>0?'+':''}${fmt(pc,0)}%</span>`};
  const rA=reference(a,wk),rB=reference(b,wk);
  const pctRow=['dist','d25','acc3'].map(kk=>{const x=cwPctAvg(a,P0,kk),y=cwPctAvg(b,P0,kk);return `<div class="cw-pr"><span>${esc(MK[kk]?.s||kk)} % partita${N>1?' (media sett.)':''}</span><b>${x!=null?cellPct(kk,x,pa.role):'–'}</b><b>${y!=null?cellPct(kk,y,pb.role):'–'}</b></div>`}).join('');
- const per=N===1?wkLabel(wk):`${N} settimane · ${dShort(days[0])} – ${dShort(days[days.length-1])}`;
- let h=`<section class="card"><div class="card-h"><h2>Confronto ${N===1?'settimana':N+' settimane'}</h2><div class="seg" role="group" aria-label="Periodo">${[1,2,3,4].map(n=>`<button type="button" data-cwn="${n}" aria-pressed="${n===N}">${n===1?'1 settimana':n+' sett.'}</button>`).join('')}</div><button type="button" class="btn pri" id="cwPdf">⤓ Report PDF</button><span class="sub">${esc(per)} · allenamenti e partite. La settimana di fine si cambia in alto.</span></div>
+ const per=cwPerLabel(P0);const SW=new Set(wks);
+ let h=`<section class="card"><div class="card-h"><h2>Confronto ${N===1?'settimana':N+' settimane'}</h2><button type="button" class="btn pri" id="cwPdf">⤓ Report PDF</button><span class="sub">${esc(per)} · allenamenti e partite insieme</span></div>
+ <div class="card-b cw-wk"><span class="cw-wl">Settimane</span><div class="seg" role="group" aria-label="Scelta rapida">${[1,2,3,4].map(n=>`<button type="button" data-cwn="${n}" aria-pressed="${P0.cons&&n===N&&wk===S.ui.wk}">${n===1?'Ultima':'Ultime '+n}</button>`).join('')}</div><div class="cw-chips">${cwWeekList().map(w=>`<button type="button" class="cw-chip" data-cww="${w}" aria-pressed="${SW.has(w)}" title="${esc(wkLabel(w))}"><b>S${w}</b><small>${esc(dShort(weekStart(w)))}</small></button>`).join('')}</div><span class="hint">Tocca le settimane da mettere a confronto (anche non vicine, fino a 8). «Ultima» parte dalla settimana scelta in alto.</span></div>
  <div class="card-b cw-pick"><div class="cw-p" style="--pc:var(--s1)"><i></i>${sel('A',a)}</div><button type="button" class="btn sm" id="cwSwap" aria-label="Scambia i giocatori">⇄</button><div class="cw-p" style="--pc:var(--s2)"><i></i>${sel('B',b)}</div></div>
  <div class="card-b cw-sum">${CW_K.map(([kk,l,u,dec])=>`<div class="cw-k"><span>${l}</span><div><b style="color:var(--s1)">${cell(TA,kk,dec)}</b><b style="color:var(--s2)">${cell(TB,kk,dec)}</b></div><small>${u}${diff(TA[kk],TB[kk])?' · '+esc(pb.name.split(' ')[0])+' '+diff(TA[kk],TB[kk]):''}</small></div>`).join('')}</div>
  <div class="card-b"><div class="cw-prs"><div class="cw-pr head"><span></span><b style="color:var(--s1)">${esc(pa.name)}</b><b style="color:var(--s2)">${esc(pb.name)}</b></div><div class="cw-pr"><span>Sedute GPS · partite</span><b>${TA.n} · ${TA.nm}</b><b>${TB.n} · ${TB.nm}</b></div>${pctRow}<div class="cw-pr"><span>Riferimento</span><b class="hint">${rA?esc(refLabel(rA)).slice(0,60):'–'}</b><b class="hint">${rB?esc(refLabel(rB)).slice(0,60):'–'}</b></div></div></div></section>`;
@@ -5220,9 +5224,12 @@ V10.cmpWeek=()=>{const P0=cwPeriod();const {wk,N,wks,days}=P0;const ps=players()
   <tr class="cw-tot"><td rowspan="2"><b>${N===1?'Settimana':'Totale periodo'}</b></td><td style="border-left:3px solid var(--s1)">${esc(pa.name.split(' ')[0])}</td>${CW_K.map(([kk,,,dec])=>`<td class="n"><b>${cell(TA,kk,dec)}</b></td>`).join('')}</tr><tr class="cw-tot"><td style="border-left:3px solid var(--s2)">${esc(pb.name.split(' ')[0])}</td>${CW_K.map(([kk,,,dec])=>`<td class="n"><b>${cell(TB,kk,dec)}</b></td>`).join('')}</tr></tbody></table></div></div></section>`;
  return h};
 document.addEventListener('change',ev=>{const t=ev.target;if(t.dataset?.cwsel){S.ui['cw'+t.dataset.cwsel]=t.value;if(S.ui.cwA===S.ui.cwB){const o=players().find(p=>p.id!==t.value);S.ui[t.dataset.cwsel==='A'?'cwB':'cwA']=o?.id}render()}});
-document.addEventListener('click',ev=>{const t=ev.target.closest('[data-cwk],#cwSwap,[data-cwn]');if(!t)return;if(t.dataset.cwn){S.ui.cwN=+t.dataset.cwn;render();return}if(t.id==='cwSwap'){[S.ui.cwA,S.ui.cwB]=[S.ui.cwB,S.ui.cwA];render();return}S.ui.cwK=t.dataset.cwk;render()});
+document.addEventListener('click',ev=>{const t=ev.target.closest('[data-cwk],#cwSwap,[data-cwn],[data-cww]');if(!t)return;if(t.dataset.cwn){S.ui.cwN=+t.dataset.cwn;S.ui.cwW=null;render();return}if(t.dataset.cww!=null){const w=+t.dataset.cww;let W=cwSel();W=W.includes(w)?W.filter(x=>x!==w):[...W,w];if(!W.length){toast('Lascia almeno una settimana.');return}if(W.length>8){toast('Al massimo 8 settimane.');return}S.ui.cwW=W.sort((a,b)=>a-b);render();return}if(t.id==='cwSwap'){[S.ui.cwA,S.ui.cwB]=[S.ui.cwB,S.ui.cwA];render();return}S.ui.cwK=t.dataset.cwk;render()});
 document.head.insertAdjacentHTML('beforeend',`<style id="cw19">
 .cw-pick{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.cw-wk{display:flex;flex-direction:column;gap:8px;padding-bottom:4px}.cw-wk .seg{align-self:flex-start;flex-wrap:wrap}.cw-wl{font-size:11px;letter-spacing:.12em;color:var(--muted);font-weight:700;text-transform:uppercase}
+.cw-chips{display:flex;flex-wrap:wrap;gap:6px}.cw-chip{display:flex;flex-direction:column;align-items:center;min-width:56px;padding:6px 9px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface-2);color:var(--ink-2);cursor:pointer;font:inherit}.cw-chip b{font-family:var(--f-num);font-size:16px;line-height:1}.cw-chip small{font-size:10.5px;color:var(--muted)}
+.cw-chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}.cw-chip[aria-pressed="true"] small{color:rgba(255,255,255,.85)}
 .cw-p{display:flex;align-items:center;gap:8px;flex:1 1 220px}.cw-p i{width:12px;height:12px;border-radius:50%;background:var(--pc);flex:none}.cw-p select{flex:1}
 .cw-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;padding-top:0}
 .cw-k{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:9px 11px;display:flex;flex-direction:column;gap:3px}
@@ -5268,7 +5275,7 @@ function pdfLegend(doc,x,y,na,nb){doc.rect(x,y+1,8,8,{fill:CWC.A});const w1=doc.
 const CWP=[['Allenamenti con GPS','n',0,''],['Partite con GPS','nm',0,''],['Minuti totali','min',0,"'"],['Distanza','dist',0,'m'],['Distanza al minuto','dpm',1,'m/min'],['15–20 km/h','d1520',0,'m'],['20–25 km/h','d2025',0,'m'],['Oltre 25 km/h','d25',0,'m'],['Oltre 20 km/h (HSR)','hsr',0,'m'],['Accelerazioni >3','acc3',0,'n'],['Decelerazioni <−3','dec3',0,'n'],['Velocità massima','vmax',1,'km/h'],['Potenza metabolica media','pm',1,'W/kg'],['RPE medio','rpe',1,'CR-10'],['sRPE totale','srpe',0,'UA'],['Recupero medio','rec',1,'1–5']];
 function cwMatchMin(pid,c){const x=parseCode(c.lineup?.[pid]);return x}
 async function pdfCompare(){const P0=cwPeriod();const {wk,N,wks,days}=P0;const {a,b}=cwPick(P0);const pa=P(a),pb=P(b);if(!pa||!pb)return;
- const logo=await pdfLogo();const doc=PDFDoc();const per=N===1?wkLabel(wk):`${N} settimane · ${dShort(days[0])} – ${dShort(days[days.length-1])}`;
+ const logo=await pdfLogo();const doc=PDFDoc();const per=cwPerLabel(P0);
  const f=pdfFrame(doc,{logo,title:'Confronto giocatori',right1:`${pa.name}  vs  ${pb.name}`,right2:per});const M=f.M,W=f.W;
  const DA=days.map(d=>cwDay(a,d)),DB=days.map(d=>cwDay(b,d));const TA=cwTot(DA),TB=cwTot(DB);const GA=cwGroups(a,P0),GB=cwGroups(b,P0);
  const G=GA.map((g,i)=>({l:g.l,a:g.t,b:GB[i].t,col:g.d?(matchOn(g.d)?'#e2364b':(isTrainDay(g.d)&&soOfDate(g.d)?SO_PROF[soOfDate(g.d)].c:null)):null}));
@@ -5328,6 +5335,127 @@ async function pdfCompare(){const P0=cwPeriod();const {wk,N,wks,days}=P0;const {
  f.end();await pdfDownload(doc,`ElevenLab_confronto_${pa.name.split(' ')[0]}_${pb.name.split(' ')[0]}_${days[0]}_${N}sett.pdf`)}
 document.addEventListener('click',async ev=>{const t=ev.target.closest('#cwPdf');if(!t)return;t.disabled=true;const old=t.textContent;t.textContent='Preparo il PDF…';
  try{await pdfCompare()}catch(e){console.error(e);toast('Non sono riuscito a creare il PDF: '+e.message)}finally{t.disabled=false;t.textContent=old}});
+/* =====================================================================
+   v21 · ESPORTA DA OGNI PAGINA
+   Pulsante «⤓ Esporta» in alto in ogni pagina:
+   - PDF di questa pagina (com'è a schermo, grafici compresi, tema chiaro)
+   - Excel di questa pagina (tutte le tabelle e i numeri dei riquadri)
+   - Immagine (la vecchia funzione)
+   - Report completo PDF: tutte le pagine dell'app in un solo file
+     (a scelta anche le schede di ogni atleta)
+   - Excel completo: tutte le tabelle di tutte le pagine + i dati grezzi
+   ===================================================================== */
+const EXP_SECTIONS=[
+ ['oggi','oggi'],['oggi','settimana'],['oggi','report'],['oggi','prepartita'],['oggi','avvisi'],
+ ['squadra','carico'],['squadra','semaforo'],['squadra','piano'],['squadra','manca'],['squadra','ruoli'],['squadra','andamento'],['squadra','mappa'],
+ ['atleti','card'],['atleti','radar'],['atleti','confronto'],['atleti','csett'],
+ ['prestazione','volume'],['prestazione','velocita'],['prestazione','soglie'],['prestazione','acc'],['prestazione','interno'],
+ ['atletica','sedute'],['atletica','gruppi'],['atletica','storico'],['atletica','esercizi'],
+ ['analisi','sedute'],['analisi','squadra'],['analisi','atleta'],['analisi','forza'],['analisi','acwr'],['analisi','classifiche'],['analisi','podio'],['analisi','test','analisi.test','risultati'],['analisi','test','analisi.test','profilo'],
+ ['salute','wellness','salute.wellness','giorno'],['salute','wellness','salute.wellness','andamento'],['salute','infortuni','salute.infortuni','attivi'],['salute','infortuni','salute.infortuni','registro'],['salute','crescita','salute.crescita','maturazione'],['salute','crescita','salute.crescita','bio'],
+ ['partite','calendario','partite.calendario','stagione'],['partite','minutaggio'],['partite','confronto'],['partite','tattica'],
+ ['dati','rosa'],['dati','qualita']];
+const EXP_ATH=['panoramica','settimana','carico','wellness','partite'];
+const tabName=(pg,tb)=>String((PAGES[pg]?.tabs||[]).find(t=>t[0]===tb)?.[1]||'').replace(/<[^>]+>/g,'');
+const subName=(k,v)=>(SUBS[k]||[]).find(x=>x[0]===v)?.[1]||'';
+function secTitle(s){const [pg,tb,sk,sv]=s;return [PAGES[pg]?.t,tabName(pg,tb),sk?subName(sk,sv):''].filter(Boolean).join(' · ')}
+let EXP_CANCEL=false;
+/* ---------- utilità ---------- */
+function expState(){return {view:S.ui.view,tabs:{...S.ui.tabs},sub:{...S.ui.sub},player:S.ui.player,match:S.ui.match,theme:document.documentElement.dataset.theme,scroll:window.scrollY}}
+function expRestore(st){S.ui.view=st.view;S.ui.tabs=st.tabs;S.ui.sub=st.sub;S.ui.player=st.player;S.ui.match=st.match;document.documentElement.dataset.theme=st.theme||'dark';document.body.classList.remove('exporting');render();window.scrollTo(0,st.scroll||0)}
+function expShow(s){S.ui.view=s[0];S.ui.tabs[s[0]]=s[1];if(s[2])S.ui.sub[s[2]]=s[3];if(s[4])S.ui.player=s[4];S.ui.match=null;render()}
+const expWait=ms=>new Promise(r=>setTimeout(r,ms));
+function canvasJpeg(c,q=.82){const du=c.toDataURL('image/jpeg',q);const bin=atob(du.split(',')[1]);const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u}
+async function expCapture(scale){const el=$('#view');const c=await html2canvas(el,{backgroundColor:'#ffffff',scale,useCORS:true,logging:false,ignoreElements:n=>n.classList?.contains('ph-a')||n.classList?.contains('tabs-wrap')||n.id==='bcTab'||n.classList?.contains('toast')});
+ const top=el.getBoundingClientRect().top+window.scrollY;const br=[...el.querySelectorAll(':scope > *, section.card, .grid > *, .cards > *')].map(n=>Math.round((n.getBoundingClientRect().top+window.scrollY-top)*scale)).filter(v=>v>0);
+ return {c,breaks:[...new Set(br)].sort((a,b)=>a-b)}}
+function expAddCanvas(doc,f,cap,title){const {c,breaks}=cap;const W=f.W,M=f.M;const k=W/c.width;const maxPt=doc.H-46-82-28;const maxPx=Math.floor(maxPt/k);
+ if(title){f.need(60);doc.rect(M,f.y,3,14,{fill:PC.acc});doc.text(M+9,f.y+1,title,{size:12,bold:true,color:PC.ink,maxW:W-12});f.y+=22}
+ let s=0;while(s<c.height-4){let lim=s+Math.floor((doc.H-46-f.y)/k);if(lim-s<maxPx*0.25){f.need(doc.H);lim=s+maxPx}
+  let e=Math.min(c.height,lim);if(e<c.height){const cand=breaks.filter(b=>b>s+(lim-s)*0.35&&b<=lim);if(cand.length)e=cand[cand.length-1]}
+  const h=e-s;if(h<=2)break;const cv=document.createElement('canvas');cv.width=c.width;cv.height=h;const x=cv.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,cv.width,h);x.drawImage(c,0,s,c.width,h,0,0,c.width,h);
+  doc.image(canvasJpeg(cv),cv.width,cv.height,M,f.y,W,h*k);f.y+=h*k+4;s=e;if(s<c.height-4)f.need(doc.H)}}
+function expTables(root,prefix){const out=[];const num=t=>{const s=t.replace(/\s+/g,' ').trim();if(/^-?\d{1,3}(\.\d{3})*(,\d+)?$/.test(s)||/^-?\d+(,\d+)?$/.test(s))return +s.replace(/\./g,'').replace(',','.');return s};
+ const textOf=n=>{if(!n)return '';if(n.nodeType===3)return n.nodeValue;if(n.nodeType!==1)return '';if(n.matches('.av,.btn,svg,script,style,.badge'))return '';if(n.tagName==='SELECT'){const o=n.options[n.selectedIndex];return o?' '+o.text+' ':''}if(n.tagName==='INPUT')return n.type==='checkbox'?(n.checked?' sì ':''):' '+(n.value||n.placeholder||'')+' ';let s='';for(const c of n.childNodes)s+=textOf(c);return ' '+s+' '};
+ const clean=n=>textOf(n).replace(/\s+/g,' ').replace(/\s+([%′'])/g,'$1').trim();
+ root.querySelectorAll('table').forEach((t,ti)=>{const card=t.closest('section.card,.card');const name=clean(card?.querySelector('.card-h h2'))||('Tabella '+(ti+1));
+  const hr=[...t.querySelectorAll('thead tr')];let H=[];if(hr.length){const last=hr[hr.length-1];for(const th of last.children){const n=+th.getAttribute('colspan')||1;const tx=clean(th)||'—';for(let i=0;i<n;i++)H.push(n>1?tx+' '+(i+1):tx)}}
+  const body=[...t.querySelectorAll('tbody tr')];if(!body.length)return;const maxC=Math.max(H.length,...body.map(r=>[...r.children].reduce((a,c)=>a+(+c.getAttribute('colspan')||1),0)));
+  while(H.length<maxC)H.push('Colonna '+(H.length+1));const seen={};H=H.map(h=>{seen[h]=(seen[h]||0)+1;return seen[h]>1?h+' ('+seen[h]+')':h});
+  const span=[];const rows=body.map(r=>{const vals=[];let ci=0;const cells=[...r.children];while(span[ci]>0){vals.push('');span[ci]--;ci++}
+   for(const td of cells){while(span[ci]>0){vals.push('');span[ci]--;ci++}const n=+td.getAttribute('colspan')||1,rs=+td.getAttribute('rowspan')||1;const v=num(clean(td));for(let i=0;i<n;i++){vals.push(i?'':v);if(rs>1)span[ci]=rs-1;ci++}}
+   const o={};H.forEach((h,i)=>{o[h]=vals[i]??''});return o});
+  out.push({name:(prefix?prefix+' - ':'')+name,rows})});
+ const K=[...root.querySelectorAll('.kpi,.bc-k,.cw-k,.stat,.ath-k > div')].map(k=>{const l=clean(k.querySelector('span'));const v=clean(k.querySelector('b'));const s2=clean(k.querySelector('small,em'));return l||v?{Voce:l,Valore:num(v),Note:s2}:null}).filter(Boolean);
+ if(K.length)out.unshift({name:(prefix?prefix+' - ':'')+'Riquadri',rows:K});return out}
+function expOverlay(msg,pct){let o=document.getElementById('expOv');if(!o){o=document.createElement('div');o.id='expOv';o.innerHTML=`<div class="exp-box"><b>Preparo il report…</b><span class="exp-msg"></span><div class="exp-bar"><i></i></div><button type="button" class="btn" id="expCancel">Annulla</button></div>`;document.body.appendChild(o)}
+ o.querySelector('.exp-msg').textContent=msg;o.querySelector('.exp-bar i').style.width=Math.round((pct||0)*100)+'%'}
+function expOverlayOff(){document.getElementById('expOv')?.remove()}
+/* ---------- PDF ed Excel della pagina ---------- */
+async function expPagePdf(){const st=expState();try{await loadH2C()}catch(e){toast('Non riesco a caricare lo strumento per il PDF: serve la connessione.');return}
+ toast('Preparo il PDF della pagina…');document.documentElement.dataset.theme='light';document.body.classList.add('exporting');render();await expWait(250);
+ try{const logo=await pdfLogo();const doc=PDFDoc();const pg=PAGES[S.ui.view];const t=tabName(S.ui.view,curTab());const pl=S.ui.view==='atleta'?P(S.ui.player)?.name:'';
+  const f=pdfFrame(doc,{logo,title:pl||pg?.t||'Eleven Lab',right1:[pl?pg?.t:'',t].filter(Boolean).join(' · '),right2:isWeekly()?wkLabel(S.ui.wk):`${S.settings.team} · ${dShort(d2s(new Date()))}`});
+  expAddCanvas(doc,f,await expCapture(1.6));f.end();await pdfDownload(doc,`ElevenLab_${[S.ui.view,curTab(),pl].filter(Boolean).join('_').replace(/\s+/g,'_')}_${d2s(new Date())}.pdf`)}
+ catch(e){console.error(e);toast('PDF non riuscito: '+e.message)}finally{expRestore(st)}}
+async function expPageXlsx(){try{const pl=S.ui.view==='atleta'?P(S.ui.player)?.name:'';const sh=expTables($('#view'),'');if(!sh.length){toast('In questa pagina non ci sono tabelle o numeri da esportare.');return}
+ const bytes=xlsx(sh);await saveFile(`ElevenLab_${[S.ui.view,curTab(),pl].filter(Boolean).join('_').replace(/\s+/g,'_')}_${d2s(new Date())}.xlsx`,new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}))}catch(e){console.error(e);toast('Excel non riuscito: '+e.message)}}
+/* ---------- report completo ---------- */
+function expList(o){const L=EXP_SECTIONS.filter(s=>PAGES[s[0]]&&(PAGES[s[0]].tabs||[]).some(t=>t[0]===s[1])&&(!s[2]||(SUBS[s[2]]||[]).some(x=>x[0]===s[3])));
+ if(o.ath){for(const p of players())for(const tb of o.athTabs||EXP_ATH)if((PAGES.atleta.tabs||[]).some(t=>t[0]===tb))L.push(['atleta',tb,null,null,p.id])}return L}
+async function expFullPdf(o){const st=expState();EXP_CANCEL=false;try{await loadH2C()}catch(e){toast('Non riesco a caricare lo strumento per il PDF: serve la connessione.');return}
+ const L=expList(o);document.documentElement.dataset.theme='light';document.body.classList.add('exporting');
+ try{const logo=await pdfLogo();const doc=PDFDoc();const f=pdfFrame(doc,{logo,title:'Report completo',right1:S.settings.team,right2:`${wkLabel(S.ui.wk)} · generato il ${dShort(d2s(new Date()))}`});
+  f.h2('Contenuto',`${L.length} pagine · settimana di riferimento: ${wkLabel(S.ui.wk)}${o.ath?' · comprese le schede di ogni atleta':''}`);
+  let last='';for(const s of L){const grp=s[4]?'Atleti · '+pName(s[4]):PAGES[s[0]].t;if(grp!==last){f.need(16);doc.text(f.M,f.y,grp,{size:9.5,bold:true,color:PC.ink});f.y+=14;last=grp}f.need(12);doc.text(f.M+12,f.y,secTitle(s).replace(PAGES[s[0]].t+' · ',''),{size:8,color:PC.mut});f.y+=11}
+  for(let i=0;i<L.length;i++){if(EXP_CANCEL)throw new Error('annullato');const s=L[i];expOverlay(`${i+1}/${L.length} · ${s[4]?pName(s[4])+' · ':''}${secTitle(s)}`,i/L.length);expShow(s);await expWait(120);
+   try{const cap=await expCapture(1.25);f.need(doc.H);expAddCanvas(doc,f,cap,(s[4]?pName(s[4])+' · ':'')+secTitle(s))}catch(e){console.error(e);f.need(30);doc.text(f.M,f.y,`${secTitle(s)}: pagina non esportabile (${e.message})`,{size:8,color:PC.mut});f.y+=16}}
+  expOverlay('Salvo il PDF…',1);f.end();await pdfDownload(doc,`ElevenLab_report_completo_${d2s(new Date())}.pdf`)}
+ catch(e){if(e.message!=='annullato'){console.error(e);toast('Report non riuscito: '+e.message)}else toast('Report annullato.')}finally{expOverlayOff();expRestore(st)}}
+async function expFullXlsx(o){const st=expState();EXP_CANCEL=false;const L=expList(o);const sheets=[];
+ try{for(let i=0;i<L.length;i++){if(EXP_CANCEL)throw new Error('annullato');const s=L[i];expOverlay(`${i+1}/${L.length} · ${secTitle(s)}`,i/L.length);expShow(s);await expWait(30);
+   const pre=(s[4]?pName(s[4]).split(' ')[0]+' ':'')+(tabName(s[0],s[1])||PAGES[s[0]].t);sheets.push(...expTables($('#view'),pre))}
+  const old=S.ui.exp;S.ui.exp={who:'team',what:'tutto',per:'season'};let raw=[];try{raw=expSheets().map(x=>({...x,name:'Dati · '+x.name}))}finally{S.ui.exp=old}
+  expOverlay('Salvo l’Excel…',1);const bytes=xlsx([...raw,...sheets]);await saveFile(`ElevenLab_tutti_i_dati_${d2s(new Date())}.xlsx`,new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}))}
+ catch(e){if(e.message!=='annullato'){console.error(e);toast('Excel non riuscito: '+e.message)}else toast('Esportazione annullata.')}finally{expOverlayOff();expRestore(st)}}
+function expFullModal(kind){const bg=document.createElement('div');bg.className='modal-bg';const n=expList({}).length,na=players().length*EXP_ATH.length;
+ bg.innerHTML=`<div class="modal" role="dialog" aria-modal="true" style="max-width:520px"><h3>${kind==='pdf'?'Report completo in PDF':'Excel di tutti i dati'}</h3>
+  <p style="margin:0;color:var(--ink-2)">${kind==='pdf'?`Un solo PDF con tutte le ${n} pagine dell’app (Oggi, Squadra, Atleti, Prestazione, Lavoro atletico, Analisi, Salute, Partite, Dati), com’erano a schermo e con i grafici, in tema chiaro. Settimana di riferimento: <b>${esc(wkLabel(S.ui.wk))}</b> (la cambi in alto).`:`Un file .xlsx con tutti i dati grezzi della stagione (sedute GPS, partite, wellness, RPE, test, infortuni…) più un foglio per ogni tabella di ogni pagina dell’app.`}</p>
+  <label class="row" style="gap:8px;align-items:center"><input type="checkbox" id="expAth"> Aggiungi le schede di ogni atleta (${players().length} giocatori · ${EXP_ATH.length} schede ciascuno, ${na} pagine in più)</label>
+  ${kind==='pdf'?'<p class="hint" style="margin:0">Ci vogliono da uno a qualche minuto: lascia l’app aperta finché non parte il download.</p>':''}
+  <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn" data-x="no">Annulla</button><button class="btn pri" data-x="ok">${kind==='pdf'?'Crea il PDF':'Crea l’Excel'}</button></div></div>`;
+ bg.addEventListener('click',e=>{const x=e.target.closest('[data-x]')?.dataset.x;if(x==='no'||e.target===bg){bg.remove();return}if(x==='ok'){const ath=bg.querySelector('#expAth').checked;bg.remove();(kind==='pdf'?expFullPdf:expFullXlsx)({ath})}});
+ document.body.appendChild(bg)}
+/* ---------- pulsante e menu in ogni pagina ---------- */
+{const _ph=pageHead;pageHead=function(){const h=_ph.apply(this,arguments);return h.replace('<div class="ph-a">',`<div class="ph-a"><div class="exp-w"><button type="button" class="btn pri" id="expBtn" aria-haspopup="menu" aria-expanded="false">⤓ Esporta</button><div class="exp-menu" role="menu" hidden>
+  <button type="button" role="menuitem" data-exp="pdf"><b>PDF di questa pagina</b><small>com’è a schermo, grafici compresi</small></button>
+  <button type="button" role="menuitem" data-exp="xlsx"><b>Excel di questa pagina</b><small>tutte le tabelle e i numeri</small></button>
+  <button type="button" role="menuitem" data-exp="img"><b>Immagine</b><small>PNG da condividere</small></button>
+  <hr><button type="button" role="menuitem" data-exp="fullpdf"><b>Report completo (PDF)</b><small>tutte le pagine dell’app in un file</small></button>
+  <button type="button" role="menuitem" data-exp="fullxlsx"><b>Excel di tutti i dati</b><small>dati grezzi + tutte le tabelle</small></button></div></div>`)}}
+document.addEventListener('click',ev=>{const b=ev.target.closest('#expBtn');const m=document.querySelector('.exp-menu');
+ if(b){const open=m.hidden;m.hidden=!open;b.setAttribute('aria-expanded',String(open));return}
+ const it=ev.target.closest('[data-exp]');if(it){m&&(m.hidden=true);const k=it.dataset.exp;if(k==='pdf')expPagePdf();else if(k==='xlsx')expPageXlsx();else if(k==='img')snapView();else expFullModal(k==='fullpdf'?'pdf':'xlsx');return}
+ if(m&&!ev.target.closest('.exp-menu'))m.hidden=true;
+ if(ev.target.closest('#expCancel'))EXP_CANCEL=true});
+document.head.insertAdjacentHTML('beforeend',`<style id="exp21">
+.ph-a [data-snap]{display:none}
+.exp-w{position:relative}
+.exp-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:40;min-width:260px;background:var(--surface-2);border:1px solid var(--line-2);border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,.45);padding:6px;display:flex;flex-direction:column;gap:2px}
+.exp-menu[hidden]{display:none}
+.exp-menu button{all:unset;cursor:pointer;padding:9px 12px;border-radius:8px;display:flex;flex-direction:column;gap:1px}
+.exp-menu button:hover{background:var(--surface-3)}.exp-menu b{font-size:13.5px;color:var(--ink)}.exp-menu small{font-size:11.5px;color:var(--muted)}
+.exp-menu hr{border:0;border-top:1px solid var(--line);margin:4px 6px}
+#expOv{position:fixed;inset:0;z-index:200;background:rgba(4,10,24,.72);display:flex;align-items:center;justify-content:center;padding:16px}
+.exp-box{background:#0c1b33;color:#eef3fb;border:1px solid #2a4370;border-radius:16px;padding:20px 22px;display:flex;flex-direction:column;gap:10px;width:min(420px,100%)}
+.exp-box .exp-msg{font-size:13px;color:#c5d2e8;min-height:18px}.exp-bar{height:8px;border-radius:4px;background:#1d3357;overflow:hidden}.exp-bar i{display:block;height:100%;background:#4c8dff;transition:width .2s}
+.exp-box .btn{align-self:flex-end}
+body.exporting .tw{max-height:none!important;overflow:visible!important}
+body.exporting .card-h .sub.sub-l{display:block!important}
+body.exporting .ci,body.exporting .ph-i{display:none!important}
+body.exporting *{animation:none!important;transition:none!important}
+@media (max-width:640px){.exp-menu{position:fixed;left:12px;right:12px;top:auto;bottom:calc(84px + env(safe-area-inset-bottom,0px));min-width:0}}
+</style>`);
 
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
