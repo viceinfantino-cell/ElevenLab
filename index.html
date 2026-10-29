@@ -5172,44 +5172,55 @@ WEEKLY2.atleti=[...(WEEKLY2.atleti||[]),'csett'];
 {const _pb=PAGE_BODY.atleti;PAGE_BODY.atleti=()=>curTab()==='csett'?V10.cmpWeek():_pb()}
 const V10=window.V10||{};
 const CW_K=[['min','Minuti','′',0],['dist','Distanza','m',0],['hsr','>20 km/h','m',0],['d25','>25 km/h','m',0],['hid','Acc>3 + Dec<−3','n',0],['vmax','Vmax','km/h',1],['rpe','RPE','',1],['srpe','sRPE','UA',0]];
-function cwDay(pid,d){const L=allEntries().filter(e=>e.p===pid&&e.date===d);const sr=srpeDay(pid,d);const w=wellOf(pid,d);
+const CW_X=['d1520','d2025','acc3','dec3','pm','rec','dpm'];
+function cwDay(pid,d){return memo(`cw:${pid}:${d}`,()=>{const L=allEntries().filter(e=>e.p===pid&&e.date===d);const sr=srpeDay(pid,d);const w=wellOf(pid,d);
  const g=k=>{const v=L.map(e=>val(e,k)).filter(x=>x!=null);return v.length?v.reduce((a,b)=>a+b,0):null};
- const hsr=(g('d2025')??null)!=null||(g('d25')??null)!=null?(g('d2025')||0)+(g('d25')||0):null;const hid=g('acc3')!=null||g('dec3')!=null?(g('acc3')||0)+(g('dec3')||0):null;
- const vm=L.map(e=>val(e,'vmax')).filter(x=>x!=null);
- return {L,gps:L.length>0,match:L.some(e=>e.kind==='match'),min:g('min'),dist:g('dist'),hsr,d25:g('d25'),hid,vmax:vm.length?Math.max(...vm):null,rpe:num(w?.rpe),srpe:sr?.v??null}}
-function cwTot(D){const t={};for(const [k] of CW_K){const v=D.map(x=>x[k]).filter(x=>x!=null);t[k]=!v.length?null:k==='vmax'?Math.max(...v):k==='rpe'?mean(v):v.reduce((a,b)=>a+b,0)}t.n=D.filter(x=>x.gps).length;return t}
-function cwBars(days,A,B,k,dec,nA,nB){const W=1000,H=230,L=46,R=10,T=14,Bm=34,iw=W-L-R,ih=H-T-Bm;const all=[...A,...B].map(x=>x[k]).filter(v=>v!=null);if(!all.length)return '<div class="empty">Nessun dato per questo parametro nella settimana.</div>';
- const mx=niceMax(Math.max(...all)*1.05);const y=v=>T+ih-v/mx*ih;const gw=iw/7,bw=Math.min(38,gw*.34);let g='';
+ const hsr=g('d2025')!=null||g('d25')!=null?(g('d2025')||0)+(g('d25')||0):null;const hid=g('acc3')!=null||g('dec3')!=null?(g('acc3')||0)+(g('dec3')||0):null;
+ const vm=L.map(e=>val(e,'vmax')).filter(x=>x!=null);let pw=0,ps=0;for(const e of L){const v=val(e,'pm'),m=val(e,'min');if(v!=null&&m){pw+=m;ps+=v*m}}
+ return {d,L,gps:L.length>0,match:L.some(e=>e.kind==='match'),min:g('min'),dist:g('dist'),hsr,d25:g('d25'),hid,d1520:g('d1520'),d2025:g('d2025'),acc3:g('acc3'),dec3:g('dec3'),pm:pw?ps/pw:null,pmW:pw,
+  vmax:vm.length?Math.max(...vm):null,rpe:num(w?.rpe),rec:num(w?.rec),srpe:sr?.v??null}})}
+function cwTot(D){const t={};const sum=k=>{const v=D.map(x=>x[k]).filter(x=>x!=null);return v.length?v.reduce((a,b)=>a+b,0):null};const avg=k=>{const v=D.map(x=>x[k]).filter(x=>x!=null);return v.length?mean(v):null};
+ for(const k of ['min','dist','hsr','d25','hid','d1520','d2025','acc3','dec3','srpe'])t[k]=sum(k);
+ const vm=D.map(x=>x.vmax).filter(x=>x!=null);t.vmax=vm.length?Math.max(...vm):null;t.rpe=avg('rpe');t.rec=avg('rec');
+ const pw=D.reduce((a,x)=>a+(x.pmW||0),0);t.pm=pw?D.reduce((a,x)=>a+(x.pm!=null?x.pm*x.pmW:0),0)/pw:null;t.dpm=t.min&&t.dist!=null?t.dist/t.min:null;
+ t.n=D.filter(x=>x.gps&&!x.match).length;t.nm=D.filter(x=>x.match).length;t.days=D.length;return t}
+function cwPeriod(){const wk=S.ui.wk;const N=Math.max(1,Math.min(4,+S.ui.cwN||1));const wks=[];for(let i=N-1;i>=0;i--)wks.push(wk-i);const days=wks.flatMap(w=>dayList(w));return {wk,N,wks,days}}
+function cwGroups(pid,P0){return P0.N===1?P0.days.map(d=>({l:`${DOW_S[s2d(d).getDay()]} ${s2d(d).getDate()}`,lt:`${DOW_FULL[s2d(d).getDay()]} ${dShort(d)}`,d,t:cwDay(pid,d)})):P0.wks.map(w=>({l:'S'+w,lt:wkLabel(w),w,t:cwTot(dayList(w).map(d=>cwDay(pid,d)))}))}
+function cwBars(GA,GB,k,dec,nA,nB){const n=GA.length;const W=1000,H=230,L=46,R=10,T=14,Bm=34,iw=W-L-R,ih=H-T-Bm;const all=[...GA,...GB].map(x=>x.t[k]).filter(v=>v!=null);if(!all.length)return '<div class="empty">Nessun dato per questo parametro nel periodo.</div>';
+ const mx=niceMax(Math.max(...all)*1.05);const y=v=>T+ih-v/mx*ih;const gw=iw/n,bw=Math.min(38,gw*.34);let g='';
  for(let i=0;i<=4;i++){const v=mx*i/4;g+=`<line class="gl" x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${fmt(v,dec)}</text>`}
- days.forEach((d,i)=>{const cx=L+gw*i+gw/2;const kk=isTrainDay(d)?soOfDate(d):null;const m=matchOn(d);
-  if(kk||m)g+=`<rect x="${L+gw*i+4}" y="${H-Bm+6}" width="${gw-8}" height="3" rx="1.5" fill="${m?'var(--club)':SO_PROF[kk].c}"/>`;
-  g+=`<text x="${cx}" y="${H-8}" text-anchor="middle">${esc(DOW_S[s2d(d).getDay()])} ${s2d(d).getDate()}</text>`;
-  [[A[i],'var(--s1)',-1,nA],[B[i],'var(--s2)',1,nB]].forEach(([x,c,s,n])=>{const v=x[k];if(v==null)return;const h=Math.max(2,y(0)-y(v));const bx=cx+(s<0?-bw-2:2);g+=`<rect x="${bx}" y="${y(v)}" width="${bw}" height="${h}" rx="4" fill="${c}"/>`});
-  const tip=`<b>${esc(DOW_FULL[s2d(d).getDay()])} ${esc(dShort(d))}</b><br>${esc(nA)}: ${A[i][k]==null?'–':fmt(A[i][k],dec)}<br>${esc(nB)}: ${B[i][k]==null?'–':fmt(B[i][k],dec)}`;
+ GA.forEach((ga,i)=>{const gb=GB[i];const cx=L+gw*i+gw/2;
+  if(ga.d){const kk=isTrainDay(ga.d)?soOfDate(ga.d):null;const m=matchOn(ga.d);if(kk||m)g+=`<rect x="${L+gw*i+4}" y="${H-Bm+6}" width="${gw-8}" height="3" rx="1.5" fill="${m?'var(--club)':SO_PROF[kk].c}"/>`}
+  g+=`<text x="${cx}" y="${H-8}" text-anchor="middle">${esc(ga.l)}</text>`;
+  [[ga.t,'var(--s1)',-1],[gb.t,'var(--s2)',1]].forEach(([x,c,s])=>{const v=x[k];if(v==null)return;const h=Math.max(2,y(0)-y(v));const bx=cx+(s<0?-bw-2:2);g+=`<rect x="${bx}" y="${y(v)}" width="${bw}" height="${h}" rx="4" fill="${c}"/>`});
+  const tip=`<b>${esc(ga.lt)}</b><br>${esc(nA)}: ${ga.t[k]==null?'–':fmt(ga.t[k],dec)}<br>${esc(nB)}: ${gb.t[k]==null?'–':fmt(gb.t[k],dec)}`;
   g+=`<rect x="${L+gw*i}" y="${T}" width="${gw}" height="${ih}" fill="transparent" data-tiph="${esc(tip)}"/>`});
  g+=`<line class="ax" x1="${L}" x2="${W-R}" y1="${y(0)}" y2="${y(0)}"/>`;
- return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Confronto giorno per giorno">${g}</svg>`}
-V10.cmpWeek=()=>{const wk=S.ui.wk;const days=dayList(wk);const ps=players();if(ps.length<2)return '<div class="card"><div class="empty">Servono almeno due giocatori.</div></div>';
- const withData=ps.filter(p=>days.some(d=>allEntries().some(e=>e.p===p.id&&e.date===d)));
- let a=S.ui.cwA,b=S.ui.cwB;if(!P(a))a=S.ui.cwA=(withData[0]||ps[0]).id;if(!P(b)||b===a)b=S.ui.cwB=(withData.find(p=>p.id!==a)||ps.find(p=>p.id!==a)).id;
- const k=S.ui.cwK||'dist';const KD=CW_K.find(x=>x[0]===k);const pa=P(a),pb=P(b);
- const DA=days.map(d=>cwDay(a,d)),DB=days.map(d=>cwDay(b,d));const TA=cwTot(DA),TB=cwTot(DB);
+ return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Confronto">${g}</svg>`}
+function cwPick(P0){const ps=players();const withData=ps.filter(p=>P0.days.some(d=>allEntries().some(e=>e.p===p.id&&e.date===d)));
+ let a=S.ui.cwA,b=S.ui.cwB;if(!P(a))a=S.ui.cwA=(withData[0]||ps[0]).id;if(!P(b)||b===a)b=S.ui.cwB=(withData.find(p=>p.id!==a)||ps.find(p=>p.id!==a)).id;return {a,b,withData}}
+function cwPctAvg(pid,P0,k){const v=P0.wks.map(w=>{const t=weekTotal(pid,w),r=reference(pid,w);return pctOf(t,r?.v,k)}).filter(x=>x!=null);return v.length?mean(v):null}
+V10.cmpWeek=()=>{const P0=cwPeriod();const {wk,N,wks,days}=P0;const ps=players();if(ps.length<2)return '<div class="card"><div class="empty">Servono almeno due giocatori.</div></div>';
+ const {a,b,withData}=cwPick(P0);const k=S.ui.cwK||'dist';const KD=CW_K.find(x=>x[0]===k);const pa=P(a),pb=P(b);
+ const DA=days.map(d=>cwDay(a,d)),DB=days.map(d=>cwDay(b,d));const TA=cwTot(DA),TB=cwTot(DB);const GA=cwGroups(a,P0),GB=cwGroups(b,P0);
  const sel=(id,cur)=>`<select class="inp" data-cwsel="${id}" style="font-weight:700">${ROLES.map(r=>{const g=ps.filter(x=>x.role===r.id);return g.length?`<optgroup label="${r.l}">${g.map(x=>`<option value="${x.id}" ${x.id===cur?'selected':''}>${esc(x.name)}${withData.includes(x)?'':' · senza dati'}</option>`).join('')}</optgroup>`:''}).join('')}</select>`;
  const cell=(x,kk,dec)=>x[kk]==null?'<span class="muted">–</span>':fmt(x[kk],dec);
- const diff=(va,vb,dec)=>{if(va==null||vb==null)return '';const dlt=vb-va;if(!va)return '';const pc=dlt/va*100;return `<span class="cw-d ${Math.abs(pc)<10?'':dlt>0?'up':'dn'}">${dlt>0?'+':''}${fmt(pc,0)}%</span>`};
- const rA=reference(a,wk),rB=reference(b,wk),wA=weekTotal(a,wk),wB=weekTotal(b,wk);
- const pctRow=['dist','d25','acc3'].map(kk=>`<div class="cw-pr"><span>${esc(MK[kk]?.s||kk)} % partita</span><b>${rA&&wA?cellPct(kk,pctOf(wA,rA.v,kk),pa.role):'–'}</b><b>${rB&&wB?cellPct(kk,pctOf(wB,rB.v,kk),pb.role):'–'}</b></div>`).join('');
- let h=`<section class="card"><div class="card-h"><h2>Confronto settimana</h2><span class="sub">${esc(wkLabel(wk))} · giorno per giorno, allenamenti e partita. Cambia settimana in alto.</span></div>
+ const diff=(va,vb)=>{if(va==null||vb==null||!va)return '';const dlt=vb-va;const pc=dlt/va*100;return `<span class="cw-d ${Math.abs(pc)<10?'':dlt>0?'up':'dn'}">${dlt>0?'+':''}${fmt(pc,0)}%</span>`};
+ const rA=reference(a,wk),rB=reference(b,wk);
+ const pctRow=['dist','d25','acc3'].map(kk=>{const x=cwPctAvg(a,P0,kk),y=cwPctAvg(b,P0,kk);return `<div class="cw-pr"><span>${esc(MK[kk]?.s||kk)} % partita${N>1?' (media sett.)':''}</span><b>${x!=null?cellPct(kk,x,pa.role):'–'}</b><b>${y!=null?cellPct(kk,y,pb.role):'–'}</b></div>`}).join('');
+ const per=N===1?wkLabel(wk):`${N} settimane · ${dShort(days[0])} – ${dShort(days[days.length-1])}`;
+ let h=`<section class="card"><div class="card-h"><h2>Confronto ${N===1?'settimana':N+' settimane'}</h2><div class="seg" role="group" aria-label="Periodo">${[1,2,3,4].map(n=>`<button type="button" data-cwn="${n}" aria-pressed="${n===N}">${n===1?'1 settimana':n+' sett.'}</button>`).join('')}</div><button type="button" class="btn pri" id="cwPdf">⤓ Report PDF</button><span class="sub">${esc(per)} · allenamenti e partite. La settimana di fine si cambia in alto.</span></div>
  <div class="card-b cw-pick"><div class="cw-p" style="--pc:var(--s1)"><i></i>${sel('A',a)}</div><button type="button" class="btn sm" id="cwSwap" aria-label="Scambia i giocatori">⇄</button><div class="cw-p" style="--pc:var(--s2)"><i></i>${sel('B',b)}</div></div>
- <div class="card-b cw-sum">${CW_K.map(([kk,l,u,dec])=>`<div class="cw-k"><span>${l}</span><div><b style="color:var(--s1)">${cell(TA,kk,dec)}</b><b style="color:var(--s2)">${cell(TB,kk,dec)}</b></div><small>${u}${diff(TA[kk],TB[kk],dec)?' · '+esc(pb.name.split(' ')[0])+' '+diff(TA[kk],TB[kk],dec):''}</small></div>`).join('')}</div>
- <div class="card-b"><div class="cw-prs"><div class="cw-pr head"><span></span><b style="color:var(--s1)">${esc(pa.name)}</b><b style="color:var(--s2)">${esc(pb.name)}</b></div><div class="cw-pr"><span>Sedute GPS</span><b>${TA.n}</b><b>${TB.n}</b></div>${pctRow}<div class="cw-pr"><span>Riferimento</span><b class="hint">${rA?esc(refLabel(rA)).slice(0,60):'–'}</b><b class="hint">${rB?esc(refLabel(rB)).slice(0,60):'–'}</b></div></div></div></section>`;
- h+=`<section class="card"><div class="card-h"><h2>Giorno per giorno</h2><div class="seg" role="group">${CW_K.map(([kk,l])=>`<button type="button" data-cwk="${kk}" aria-pressed="${kk===k}">${l}</button>`).join('')}</div></div><div class="card-b">${cwBars(days,DA,DB,k,KD[3],pa.name,pb.name)}<div class="cw-leg"><span><i style="background:var(--s1)"></i>${esc(pa.name)}</span><span><i style="background:var(--s2)"></i>${esc(pb.name)}</span><span class="hint">la lineetta sotto il giorno è il colore dell’obiettivo</span></div></div></section>`;
- h+=`<section class="card"><div class="card-h"><h2>Tabella</h2></div><div class="card-b flush"><div class="tw"><table class="t cw-t"><thead><tr><th>Giorno</th><th>Atleta</th>${CW_K.map(([kk,l])=>`<th class="n">${l}</th>`).join('')}</tr></thead><tbody>${days.map((d,i)=>{const kk=isTrainDay(d)?soOfDate(d):null;const m=matchOn(d);const lab=`<b>${esc(DOW_S[s2d(d).getDay()])} ${s2d(d).getDate()}</b> <small class="muted">${esc(mdForDate(d))}</small>${m?` <span class="tag match">vs ${esc(m.opp)}</span>`:kk?` <span class="soobj" style="--oc:${SO_PROF[kk].c}">${esc(SO_PROF[kk].l)}</span>`:''}`;
-  return [[DA[i],pa,'var(--s1)'],[DB[i],pb,'var(--s2)']].map(([x,p,c],j)=>`<tr class="${j?'cw-b':'cw-a'}">${j?'':`<td rowspan="2" class="cw-day">${lab}</td>`}<td style="border-left:3px solid ${c}">${esc(p.name.split(' ')[0])}${!x.gps&&x.rpe!=null?' <small class="muted">solo RPE</small>':''}</td>${CW_K.map(([kk,,,dec])=>`<td class="n">${cell(x,kk,dec)}</td>`).join('')}</tr>`).join('')}).join('')}
-  <tr class="cw-tot"><td rowspan="2"><b>Settimana</b></td><td style="border-left:3px solid var(--s1)">${esc(pa.name.split(' ')[0])}</td>${CW_K.map(([kk,,,dec])=>`<td class="n"><b>${cell(TA,kk,dec)}</b></td>`).join('')}</tr><tr class="cw-tot"><td style="border-left:3px solid var(--s2)">${esc(pb.name.split(' ')[0])}</td>${CW_K.map(([kk,,,dec])=>`<td class="n"><b>${cell(TB,kk,dec)}</b></td>`).join('')}</tr></tbody></table></div></div></section>`;
+ <div class="card-b cw-sum">${CW_K.map(([kk,l,u,dec])=>`<div class="cw-k"><span>${l}</span><div><b style="color:var(--s1)">${cell(TA,kk,dec)}</b><b style="color:var(--s2)">${cell(TB,kk,dec)}</b></div><small>${u}${diff(TA[kk],TB[kk])?' · '+esc(pb.name.split(' ')[0])+' '+diff(TA[kk],TB[kk]):''}</small></div>`).join('')}</div>
+ <div class="card-b"><div class="cw-prs"><div class="cw-pr head"><span></span><b style="color:var(--s1)">${esc(pa.name)}</b><b style="color:var(--s2)">${esc(pb.name)}</b></div><div class="cw-pr"><span>Sedute GPS · partite</span><b>${TA.n} · ${TA.nm}</b><b>${TB.n} · ${TB.nm}</b></div>${pctRow}<div class="cw-pr"><span>Riferimento</span><b class="hint">${rA?esc(refLabel(rA)).slice(0,60):'–'}</b><b class="hint">${rB?esc(refLabel(rB)).slice(0,60):'–'}</b></div></div></div></section>`;
+ h+=`<section class="card"><div class="card-h"><h2>${N===1?'Giorno per giorno':'Settimana per settimana'}</h2><div class="seg" role="group">${CW_K.map(([kk,l])=>`<button type="button" data-cwk="${kk}" aria-pressed="${kk===k}">${l}</button>`).join('')}</div></div><div class="card-b">${cwBars(GA,GB,k,KD[3],pa.name,pb.name)}<div class="cw-leg"><span><i style="background:var(--s1)"></i>${esc(pa.name)}</span><span><i style="background:var(--s2)"></i>${esc(pb.name)}</span>${N===1?'<span class="hint">la lineetta sotto il giorno è il colore dell’obiettivo</span>':''}</div></div></section>`;
+ const rowsHtml=GA.map((ga,i)=>{const gb=GB[i];let lab;if(ga.d){const d=ga.d;const kk=isTrainDay(d)?soOfDate(d):null;const m=matchOn(d);lab=`<b>${esc(DOW_S[s2d(d).getDay()])} ${s2d(d).getDate()}</b> <small class="muted">${esc(mdForDate(d))}</small>${m?` <span class="tag match">vs ${esc(m.opp)}</span>`:kk?` <span class="soobj" style="--oc:${SO_PROF[kk].c}">${esc(SO_PROF[kk].l)}</span>`:''}`}else lab=`<b>${esc(ga.lt)}</b>`;
+  return [[ga.t,pa,'var(--s1)'],[gb.t,pb,'var(--s2)']].map(([x,p,c],j)=>`<tr class="${j?'cw-b':'cw-a'}">${j?'':`<td rowspan="2" class="cw-day">${lab}</td>`}<td style="border-left:3px solid ${c}">${esc(p.name.split(' ')[0])}${ga.d&&!x.gps&&x.rpe!=null?' <small class="muted">solo RPE</small>':''}</td>${CW_K.map(([kk,,,dec])=>`<td class="n">${cell(x,kk,dec)}</td>`).join('')}</tr>`).join('')}).join('');
+ h+=`<section class="card"><div class="card-h"><h2>Tabella</h2></div><div class="card-b flush"><div class="tw"><table class="t cw-t"><thead><tr><th>${N===1?'Giorno':'Settimana'}</th><th>Atleta</th>${CW_K.map(([kk,l])=>`<th class="n">${l}</th>`).join('')}</tr></thead><tbody>${rowsHtml}
+  <tr class="cw-tot"><td rowspan="2"><b>${N===1?'Settimana':'Totale periodo'}</b></td><td style="border-left:3px solid var(--s1)">${esc(pa.name.split(' ')[0])}</td>${CW_K.map(([kk,,,dec])=>`<td class="n"><b>${cell(TA,kk,dec)}</b></td>`).join('')}</tr><tr class="cw-tot"><td style="border-left:3px solid var(--s2)">${esc(pb.name.split(' ')[0])}</td>${CW_K.map(([kk,,,dec])=>`<td class="n"><b>${cell(TB,kk,dec)}</b></td>`).join('')}</tr></tbody></table></div></div></section>`;
  return h};
 document.addEventListener('change',ev=>{const t=ev.target;if(t.dataset?.cwsel){S.ui['cw'+t.dataset.cwsel]=t.value;if(S.ui.cwA===S.ui.cwB){const o=players().find(p=>p.id!==t.value);S.ui[t.dataset.cwsel==='A'?'cwB':'cwA']=o?.id}render()}});
-document.addEventListener('click',ev=>{const t=ev.target.closest('[data-cwk],#cwSwap');if(!t)return;if(t.id==='cwSwap'){[S.ui.cwA,S.ui.cwB]=[S.ui.cwB,S.ui.cwA];render();return}S.ui.cwK=t.dataset.cwk;render()});
+document.addEventListener('click',ev=>{const t=ev.target.closest('[data-cwk],#cwSwap,[data-cwn]');if(!t)return;if(t.dataset.cwn){S.ui.cwN=+t.dataset.cwn;render();return}if(t.id==='cwSwap'){[S.ui.cwA,S.ui.cwB]=[S.ui.cwB,S.ui.cwA];render();return}S.ui.cwK=t.dataset.cwk;render()});
 document.head.insertAdjacentHTML('beforeend',`<style id="cw19">
 .cw-pick{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .cw-p{display:flex;align-items:center;gap:8px;flex:1 1 220px}.cw-p i{width:12px;height:12px;border-radius:50%;background:var(--pc);flex:none}.cw-p select{flex:1}
@@ -5226,6 +5237,97 @@ document.head.insertAdjacentHTML('beforeend',`<style id="cw19">
 .cw-t tr.cw-tot td{background:var(--surface-3)!important}
 @media (max-width:640px){.cw-pr{grid-template-columns:90px 1fr 1fr}}
 </style>`);
+/* =====================================================================
+   v20 · REPORT PDF «CONFRONTO GIOCATORI» (1, 2, 3 o 4 settimane)
+   Sintesi, grafici (carico esterno, interno, wellness), % della partita,
+   dettaglio giorno per giorno, partite e osservazioni automatiche.
+   ===================================================================== */
+const CWC={A:'#2563eb',B:'#f59e0b',grid:'#e2e8f0',ax:'#94a3b8'};
+function pdfGBars(doc,x,y,w,h,title,G,k,dec,unit){doc.text(x,y,title,{size:9,bold:true,color:PC.ink});if(unit)doc.text(x+w,y+1,unit,{size:7,color:PC.mut,align:'right'});
+ const T=y+16,L=x+30,B=y+h-14,iw=w-32,ih=B-T;const all=G.flatMap(g=>[g.a[k],g.b[k]]).filter(v=>v!=null);
+ if(!all.length){doc.text(x,T+ih/2,'Nessun dato nel periodo',{size:8,color:PC.mut});return}
+ const mx=niceMax(Math.max(...all)*1.08);const Y=v=>B-v/mx*ih;
+ for(let i=0;i<=4;i++){const v=mx*i/4;doc.line(L,Y(v),L+iw,Y(v),{color:CWC.grid,lw:.4});doc.text(L-3,Y(v)-3,fmt(v,v<10&&dec?1:0),{size:6,color:PC.mut,align:'right'})}
+ const n=G.length,gw=iw/n,bw=Math.min(16,gw*.32);
+ G.forEach((g,i)=>{const cx=L+gw*i+gw/2;if(g.col)doc.rect(L+gw*i+3,B+2,gw-6,1.6,{fill:g.col});
+  [[g.a[k],CWC.A,-1],[g.b[k],CWC.B,1]].forEach(([v,c,s])=>{if(v==null)return;const hh=Math.max(1,B-Y(v));const bx=cx+(s<0?-bw-1:1);doc.rect(bx,B-hh,bw,hh,{fill:c});if(n<=8)doc.text(bx+bw/2,B-hh-8,fmt(v,dec),{size:5.6,color:'#334155',align:'center'})});
+  doc.text(cx,B+5,g.l,{size:6.2,color:'#334155',align:'center',maxW:gw-2})});
+ doc.line(L,B,L+iw,B,{color:CWC.ax,lw:.6})}
+function pdfL2(doc,x,y,w,h,title,G,k,lo,hi,dec,unit){doc.text(x,y,title,{size:9,bold:true,color:PC.ink});if(unit)doc.text(x+w,y+1,unit,{size:7,color:PC.mut,align:'right'});
+ const T=y+16,L=x+30,B=y+h-14,iw=w-32,ih=B-T;const vals=G.flatMap(g=>[g.a[k],g.b[k]]).filter(v=>v!=null);
+ if(!vals.length){doc.text(x,T+ih/2,'Nessun dato nel periodo',{size:8,color:PC.mut});return}
+ const a0=lo??Math.floor(Math.min(...vals)),a1=hi??Math.ceil(Math.max(...vals));const Y=v=>B-(v-a0)/((a1-a0)||1)*ih;
+ for(let i=0;i<=4;i++){const v=a0+(a1-a0)*i/4;doc.line(L,Y(v),L+iw,Y(v),{color:CWC.grid,lw:.4});doc.text(L-3,Y(v)-3,fmt(v,dec),{size:6,color:PC.mut,align:'right'})}
+ const n=G.length,X=i=>L+(n<=1?iw/2:iw*i/(n-1));
+ for(const [key,c] of [['a',CWC.A],['b',CWC.B]]){let seg=[];const flush=()=>{if(seg.length>1)doc.poly(seg,{stroke:c,lw:1.6,close:false});seg=[]};
+  G.forEach((g,i)=>{const v=g[key][k];if(v==null){flush();return}seg.push([X(i),Y(v)])});flush();
+  G.forEach((g,i)=>{const v=g[key][k];if(v!=null)doc.circle(X(i),Y(v),1.9,{fill:c})})}
+ const step=Math.ceil(n/14);G.forEach((g,i)=>{if(i%step===0||(i===n-1&&(n-1)%step>=step/2))doc.text(X(i),B+5,g.l,{size:6,color:'#334155',align:'center'})});
+ doc.line(L,B,L+iw,B,{color:CWC.ax,lw:.6})}
+function pdfLegend(doc,x,y,na,nb){doc.rect(x,y+1,8,8,{fill:CWC.A});const w1=doc.text(x+12,y+1,na,{size:7.5,color:PC.ink});doc.rect(x+24+w1,y+1,8,8,{fill:CWC.B});doc.text(x+36+w1,y+1,nb,{size:7.5,color:PC.ink})}
+const CWP=[['Allenamenti con GPS','n',0,''],['Partite con GPS','nm',0,''],['Minuti totali','min',0,"'"],['Distanza','dist',0,'m'],['Distanza al minuto','dpm',1,'m/min'],['15–20 km/h','d1520',0,'m'],['20–25 km/h','d2025',0,'m'],['Oltre 25 km/h','d25',0,'m'],['Oltre 20 km/h (HSR)','hsr',0,'m'],['Accelerazioni >3','acc3',0,'n'],['Decelerazioni <−3','dec3',0,'n'],['Velocità massima','vmax',1,'km/h'],['Potenza metabolica media','pm',1,'W/kg'],['RPE medio','rpe',1,'CR-10'],['sRPE totale','srpe',0,'UA'],['Recupero medio','rec',1,'1–5']];
+function cwMatchMin(pid,c){const x=parseCode(c.lineup?.[pid]);return x}
+async function pdfCompare(){const P0=cwPeriod();const {wk,N,wks,days}=P0;const {a,b}=cwPick(P0);const pa=P(a),pb=P(b);if(!pa||!pb)return;
+ const logo=await pdfLogo();const doc=PDFDoc();const per=N===1?wkLabel(wk):`${N} settimane · ${dShort(days[0])} – ${dShort(days[days.length-1])}`;
+ const f=pdfFrame(doc,{logo,title:'Confronto giocatori',right1:`${pa.name}  vs  ${pb.name}`,right2:per});const M=f.M,W=f.W;
+ const DA=days.map(d=>cwDay(a,d)),DB=days.map(d=>cwDay(b,d));const TA=cwTot(DA),TB=cwTot(DB);const GA=cwGroups(a,P0),GB=cwGroups(b,P0);
+ const G=GA.map((g,i)=>({l:g.l,a:g.t,b:GB[i].t,col:g.d?(matchOn(g.d)?'#e2364b':(isTrainDay(g.d)&&soOfDate(g.d)?SO_PROF[soOfDate(g.d)].c:null)):null}));
+ const end=days[days.length-1]>d2s(new Date())?d2s(new Date()):days[days.length-1];
+ const ms=calMatches().filter(c=>c.date>=days[0]&&c.date<=days[days.length-1]);
+ /* schede dei due giocatori */
+ const card=(p,x,c,T)=>{const w=(W-10)/2;doc.rect(x,f.y,w,74,{fill:'#f8fafc'});doc.rect(x,f.y,4,74,{fill:c});
+  doc.text(x+12,f.y+8,p.name,{size:13,bold:true,color:PC.ink,maxW:w-20});doc.text(x+12,f.y+26,`${ROLE[p.role]?.l||p.role||''} · ${AVAIL_L[availOf(p.id,wk)]||''}`,{size:8,color:PC.mut,maxW:w-20});
+  let ac=null;try{ac=acwrEwma(p.id,lastDataDate('2000-01-01',end),'dist')}catch(e){}const pbv=typeof window.pb==='function'?window.pb(p.id)?.v:null;const mm=ms.reduce((s,m)=>s+(cwMatchMin(p.id,m)?.min||0),0);
+  const inj=injList().filter(i=>i.p===p.id&&i.date<=days[days.length-1]&&(i.status!=='chiuso'||(i.returnDate||i.date)>=days[0]));
+  const items=[['Minuti in partita',fmt(mm)+"'"],['ACWR (distanza)',ac?.r!=null?fmt(ac.r,2)+(ac.days<28?' *':''):'–'],['Vmax record',pbv?fmt(pbv,1)+' km/h':'–'],['Infortuni',inj.length?inj.map(i=>`${i.type||''} ${dShort(i.date)}`).join(', '):'nessuno']];
+  items.forEach(([l,v],i)=>{const xx=x+12+(i%2)*(w-24)/2,yy=f.y+40+Math.floor(i/2)*16;doc.text(xx,yy,l.toUpperCase(),{size:5.8,bold:true,color:PC.mut});doc.text(xx,yy+7,v,{size:8,bold:true,color:PC.ink,maxW:(w-24)/2-4})})};
+ f.need(90);card(pa,M,CWC.A,TA);card(pb,M+(W-10)/2+10,CWC.B,TB);f.y+=88;
+ /* sintesi */
+ f.h2('Sintesi del periodo',`${per} · allenamenti e partite insieme · differenza = ${pb.name.split(' ')[0]} rispetto a ${pa.name.split(' ')[0]}`);
+ f.table([{l:'Parametro',w:.34},{l:pa.name,w:.2,align:'right'},{l:pb.name,w:.2,align:'right'},{l:'Differenza',w:.14,align:'right'},{l:'Unità',w:.12}],
+  CWP.map(([l,k,dec,u])=>{const va=TA[k],vb=TB[k];let d='–',c=PC.mut,bo=false;if(va!=null&&vb!=null&&va){const pc=(vb-va)/va*100;d=(pc>0?'+':'')+fmt(pc,0)+'%';if(Math.abs(pc)>=10){c=pc>0?CWC.B:CWC.A;bo=true}}
+   return [l,{t:va==null?'–':fmt(va,dec),b:va!=null&&vb!=null&&va>vb*1.1,c:va!=null&&vb!=null&&va>vb*1.1?CWC.A:PC.ink},{t:vb==null?'–':fmt(vb,dec),b:va!=null&&vb!=null&&vb>va*1.1,c:va!=null&&vb!=null&&vb>va*1.1?CWC.B:PC.ink},{t:d,c,b:bo},u]}),{firstBold:true,rh:14});
+ /* grafici carico */
+ f.h2(N===1?'Giorno per giorno':'Settimana per settimana',N===1?'La lineetta colorata sotto il giorno è l’obiettivo della seduta (rosso = partita)':'Totali di ogni settimana');
+ f.need(16);pdfLegend(doc,M,f.y,pa.name,pb.name);f.y+=16;
+ const cw=(W-16)/2,ch=150;const charts=[['Distanza totale','dist',0,'m'],['Oltre 20 km/h (HSR)','hsr',0,'m'],['Accelerazioni >3 + Decelerazioni <−3','hid',0,'n'],['sRPE (RPE × minuti)','srpe',0,'UA']];
+ for(let i=0;i<charts.length;i+=2){f.need(ch+8);for(let j=0;j<2&&i+j<charts.length;j++){const [t,k,dec,u]=charts[i+j];pdfGBars(doc,M+j*(cw+16),f.y,cw,ch,t,G,k,dec,u)}f.y+=ch+10}
+ f.need(ch+8);pdfGBars(doc,M,f.y,cw,ch,'Oltre 25 km/h',G,'d25',0,'m');pdfL2(doc,M+cw+16,f.y,cw,ch,'Velocità massima',G,'vmax',null,null,1,'km/h');f.y+=ch+10;
+ /* % partita */
+ const pcCell=(pid,w,k,role)=>{const v=pctOf(weekTotal(pid,w),reference(pid,w)?.v,k);return v==null?'–':{t:fmt(v,0)+'%',st:status(k,v,role)}};
+ f.h2('Carico in % della partita di riferimento','Solo allenamenti, somma della settimana diviso la partita di riferimento di ciascuno · verde in fascia, giallo sotto, rosso sopra');
+ f.table([{l:'Settimana',w:.2},{l:'Dist',w:.1,align:'right'},{l:'20–25',w:.1,align:'right'},{l:'>25',w:.1,align:'right'},{l:'Acc>3',w:.1,align:'right'},{l:'Dist',w:.1,align:'right'},{l:'20–25',w:.1,align:'right'},{l:'>25',w:.1,align:'right'},{l:'Acc>3',w:.1,align:'right'}],
+  [[{t:'',b:true},{t:pa.name.split(' ')[0],c:CWC.A,b:true},'','','',{t:pb.name.split(' ')[0],c:CWC.B,b:true},'','',''],...wks.map(w=>[wkLabel(w),...['dist','d2025','d25','acc3'].map(k=>pcCell(a,w,k,pa.role)),...['dist','d2025','d25','acc3'].map(k=>pcCell(b,w,k,pb.role))])],{rh:15});
+ f.need(14);doc.text(M,f.y,`Riferimento ${pa.name.split(' ')[0]}: ${reference(a,wk)?refLabel(reference(a,wk)):'–'}`.slice(0,140),{size:7,color:PC.mut,maxW:W});f.y+=11;doc.text(M,f.y,`Riferimento ${pb.name.split(' ')[0]}: ${reference(b,wk)?refLabel(reference(b,wk)):'–'}`.slice(0,140),{size:7,color:PC.mut,maxW:W});f.y+=18;
+ /* wellness */
+ const GD=days.filter(d=>d<=end).map(d=>({l:`${s2d(d).getDate()}/${s2d(d).getMonth()+1}`,a:cwDay(a,d),b:cwDay(b,d)}));
+ f.h2('Wellness e carico interno','Recupero dal Form la mattina (1–5) e RPE della seduta (CR-10), giorno per giorno');
+ f.need(ch+8);pdfL2(doc,M,f.y,cw,ch,'Recupero (Form)',GD,'rec',1,5,0,'1–5');pdfL2(doc,M+cw+16,f.y,cw,ch,'RPE della seduta',GD,'rpe',0,10,0,'CR-10');f.y+=ch+12;
+ /* dettaglio giorni */
+ const rows=[];for(const d of days){const x=cwDay(a,d),y=cwDay(b,d);if(!x.gps&&!y.gps&&x.rpe==null&&y.rpe==null)continue;const m=matchOn(d);const kk=isTrainDay(d)?soOfDate(d):null;
+  const lab=`${DOW_S[s2d(d).getDay()]} ${dShort(d)}`;const obj=m?'vs '+m.opp:kk?SO_PROF[kk].l:mdForDate(d);
+  for(const [z,p,c,j] of [[x,pa,CWC.A,0],[y,pb,CWC.B,1]])rows.push([j?{t:''}:{t:lab,b:true},j?'':obj,{t:p.name.split(' ')[0],c},z.min==null?'–':fmt(z.min),z.dist==null?'–':fmt(z.dist),z.hsr==null?'–':fmt(z.hsr),z.d25==null?'–':fmt(z.d25),z.hid==null?'–':fmt(z.hid),z.vmax==null?'–':fmt(z.vmax,1),z.rpe==null?'–':fmt(z.rpe),z.srpe==null?'–':fmt(z.srpe),z.rec==null?'–':fmt(z.rec)])}
+ f.need(90);f.h2('Dettaglio giorno per giorno','Solo i giorni in cui almeno uno dei due ha dati GPS o RPE');
+ if(rows.length)f.table([{l:'Giorno',w:.12},{l:'MD / obiettivo',w:.15},{l:'Atleta',w:.1},{l:"Min",w:.06,align:'right'},{l:'Dist',w:.08,align:'right'},{l:'>20',w:.07,align:'right'},{l:'>25',w:.06,align:'right'},{l:'Acc+Dec',w:.08,align:'right'},{l:'Vmax',w:.06,align:'right'},{l:'RPE',w:.05,align:'right'},{l:'sRPE',w:.07,align:'right'},{l:'Rec',w:.05,align:'right'}],rows,{rh:13,fs:7});
+ else f.note('Nessun dato nel periodo.');
+ /* partite */
+ if(ms.length){f.need(70);f.h2('Partite nel periodo','Minuti dal tabellino · dati GPS della partita se caricati');
+  const me=(pid,c)=>allEntries().find(e=>e.p===pid&&e.kind==='match'&&e.date===c.date);const mm=(pid,c)=>{const x=cwMatchMin(pid,c);return x?`${LU_L[x.st]||''}${x.min?' '+x.min+"'":''}`:'–'};
+  f.table([{l:'Partita',w:.26},{l:pa.name.split(' ')[0],w:.12},{l:'Dist',w:.1,align:'right'},{l:'>25',w:.08,align:'right'},{l:'Vmax',w:.08,align:'right'},{l:pb.name.split(' ')[0],w:.12},{l:'Dist',w:.1,align:'right'},{l:'>25',w:.07,align:'right'},{l:'Vmax',w:.07,align:'right'}],
+   ms.map(c=>{const ea=me(a,c),eb=me(b,c);return [`G${c.g||''} ${c.opp} ${c.res||''} · ${dShort(c.date)}`,mm(a,c),ea?fmt(val(ea,'dist')):'–',ea?fmt(val(ea,'d25')):'–',ea?fmt(val(ea,'vmax'),1):'–',mm(b,c),eb?fmt(val(eb,'dist')):'–',eb?fmt(val(eb,'d25')):'–',eb?fmt(val(eb,'vmax'),1):'–']}),{rh:14})}
+ /* osservazioni */
+ const obs=[];const na=pa.name.split(' ')[0],nb=pb.name.split(' ')[0];
+ for(const [l,k] of [['distanza','dist'],['corsa oltre 20 km/h','hsr'],['corsa oltre 25 km/h','d25'],['quantità di accelerazioni e frenate intense','hid'],['sRPE (carico interno)','srpe']]){const va=TA[k],vb=TB[k];if(va&&vb){const pc=(vb-va)/va*100;if(Math.abs(pc)>=15){const hi=vb>va?nb:na,lo=vb>va?na:nb,r=Math.max(va,vb)/Math.min(va,vb);obs.push(r>=2?`${hi} ha fatto ${fmt(r,1)} volte la ${l} di ${lo} (${fmt(Math.max(va,vb))} contro ${fmt(Math.min(va,vb))}).`:`${hi} ha fatto il ${fmt((r-1)*100,0)}% di ${l} in più di ${lo} (${fmt(Math.max(va,vb))} contro ${fmt(Math.min(va,vb))}).`)}}}
+ if(TA.n!==TB.n)obs.push(`Allenamenti con GPS: ${na} ${TA.n}, ${nb} ${TB.n}${Math.abs(TA.n-TB.n)>=2?' — parte della differenza di carico viene dalle sedute in meno.':'.'}`);
+ const ePA=TA.srpe&&TA.dist?TA.srpe/(TA.dist/1000):null,ePB=TB.srpe&&TB.dist?TB.srpe/(TB.dist/1000):null;
+ if(ePA&&ePB&&Math.abs(ePA-ePB)/Math.min(ePA,ePB)>=0.2)obs.push(`Carico percepito per km: ${na} ${fmt(ePA)} UA/km, ${nb} ${fmt(ePB)} UA/km. Chi ha il valore più alto ha sentito più fatica a parità di lavoro: da tenere d’occhio insieme al recupero.`);
+ if(TA.rec!=null&&TB.rec!=null&&Math.abs(TA.rec-TB.rec)>=0.5)obs.push(`Recupero medio dal Form: ${na} ${fmt(TA.rec,1)}, ${nb} ${fmt(TB.rec,1)} su 5.`);
+ for(const [p,T] of [[pa,TA],[pb,TB]]){const pbv=typeof window.pb==='function'?window.pb(p.id)?.v:null;if(pbv&&T.vmax)obs.push(`${p.name.split(' ')[0]}: velocità massima nel periodo ${fmt(T.vmax,1)} km/h, ${fmt(T.vmax/pbv*100,0)}% del suo record (${fmt(pbv,1)}).`)}
+ const noG=[[pa,DA],[pb,DB]].map(([p,D])=>[p,D.filter(x=>!x.gps&&x.rpe!=null).length]).filter(x=>x[1]);for(const [p,n] of noG)obs.push(`${p.name.split(' ')[0]}: ${n} giorn${n===1?'o':'i'} con RPE ma senza GPS (sRPE calcolato con la durata media della seduta).`);
+ if(obs.length){f.need(60);f.h2('Osservazioni');for(const o of obs){f.need(16);doc.text(M,f.y,'•',{size:9,color:PC.acc});const words=o.split(' ');let line='';const lines=[];for(const w of words){if(pdfW(line+' '+w,8)>W-14){lines.push(line);line=w}else line=line?line+' '+w:w}lines.push(line);lines.forEach((ln,i)=>{f.need(12);doc.text(M+10,f.y,ln,{size:8,color:PC.ink});f.y+=11});f.y+=3}}
+ f.end();await pdfDownload(doc,`ElevenLab_confronto_${pa.name.split(' ')[0]}_${pb.name.split(' ')[0]}_${days[0]}_${N}sett.pdf`)}
+document.addEventListener('click',async ev=>{const t=ev.target.closest('#cwPdf');if(!t)return;t.disabled=true;const old=t.textContent;t.textContent='Preparo il PDF…';
+ try{await pdfCompare()}catch(e){console.error(e);toast('Non sono riuscito a creare il PDF: '+e.message)}finally{t.disabled=false;t.textContent=old}});
 
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
