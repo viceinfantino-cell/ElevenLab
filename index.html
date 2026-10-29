@@ -4260,7 +4260,7 @@ const SYG={
 function syUnionable(p){return p.startsWith(coll('weeks')+'/w')||p.startsWith(coll('wellness')+'/w')||p==='app/'+calDoc()}
 function syUnion(p,win,lose,W){const out=JSON.parse(JSON.stringify(win));
  if(p===('app/'+calDoc())){out.matches=out.matches||{};for(const [id,m] of Object.entries(lose.matches||{})){const w=out.matches[id];if(!w){out.matches[id]=m;continue}const em=v=>v==null||v===''||(typeof v==='object'&&!Object.keys(v).length);for(const k of ['res','lineup','manual','txg','tac','video','formation'])if(em(w[k])&&!em(m[k]))w[k]=m[k];if(m.lineup&&w.lineup)for(const [pid,v] of Object.entries(m.lineup))if(em(w.lineup[pid]))w.lineup[pid]=v}return out}
- if(lose.entries){const ids=new Set();for(const [q,d] of Object.entries(W))if(q.startsWith(coll('weeks')+'/w'))for(const id of Object.keys(d?.entries||{}))ids.add(id);out.entries=out.entries||{};for(const [id,e] of Object.entries(lose.entries))if(!ids.has(id))out.entries[id]=e}
+ if(lose.entries){const ids=new Set();for(const [q,d] of Object.entries(W))if(q.startsWith(coll('weeks')+'/w'))for(const id of Object.keys(d?.entries||{}))ids.add(id);const tomb=new Set([...(win.del||[]),...(lose.del||[])]);out.entries=out.entries||{};for(const [id,e] of Object.entries(lose.entries))if(!ids.has(id)&&!tomb.has(id))out.entries[id]=e;for(const id of tomb)delete out.entries[id];if(tomb.size)out.del=[...tomb].slice(-300)}
  for(const f of ['avail','dur','mins'])if(lose[f])out[f]={...lose[f],...(out[f]||{})};
  if(lose.days){out.days=out.days||{};for(const [d,day] of Object.entries(lose.days))out.days[d]={...(day||{}),...(out.days[d]||{})}}
  return out}
@@ -4871,7 +4871,7 @@ function lyInfo(){for(const h of document.querySelectorAll('#view .card-h')){con
  s.classList.add('sub-l');const b=document.createElement('button');b.type='button';b.className='ci';b.textContent='i';b.setAttribute('aria-label','Spiegazione');b.setAttribute('aria-expanded','false');const h2=h.querySelector(':scope>h2');(h2||h).appendChild(b)}}
 function lyCards(){const on=matchMedia('(max-width:640px)').matches;
  for(const t of document.querySelectorAll('#view table.t')){const tw=t.closest('.tw');
-  if(!on||t.closest('.heat')||t.classList.contains('heat')){t.classList.remove('tcard');tw?.classList.remove('tw-card');continue}
+  if(!on||t.closest('.heat')||t.classList.contains('heat')||t.querySelector('[rowspan]')){t.classList.remove('tcard');tw?.classList.remove('tw-card');continue}
   const hr=t.querySelectorAll('thead tr');const last=hr[hr.length-1];if(!last){continue}
   const H=[];for(const th of last.children){const n=+th.getAttribute('colspan')||1;for(let i=0;i<n;i++)H.push(th.textContent.trim())}
   if(H.length<3||H.length>11||hr.length>1){t.classList.remove('tcard');continue}
@@ -5160,6 +5160,72 @@ document.head.insertAdjacentHTML('beforeend',`<style id="rf18">
 @media (prefers-reduced-motion:reduce){.rf-btn.busy .rf-i,.rf-m.busy span{animation:none}}
 </style>`);
 setTimeout(()=>{try{rfUI()}catch(e){}},500);
+/* =====================================================================
+   v19 · CONFRONTO SETTIMANA TRA DUE GIOCATORI + righe eliminate che non tornano
+   ===================================================================== */
+/* una riga eliminata resta eliminata anche se un altro dispositivo ne ha ancora la copia */
+{const _ed=entryDel;entryDel=function(id){const l=entryLoc(id);if(l){l.w.del=[...new Set([...(l.w.del||[]),id])].slice(-300)}return _ed(id)}}
+
+/* ---------- Atleti → Confronto settimana ---------- */
+PAGES.atleti.tabs.push(['csett','Confronto settimana']);
+WEEKLY2.atleti=[...(WEEKLY2.atleti||[]),'csett'];
+{const _pb=PAGE_BODY.atleti;PAGE_BODY.atleti=()=>curTab()==='csett'?V10.cmpWeek():_pb()}
+const V10=window.V10||{};
+const CW_K=[['min','Minuti','′',0],['dist','Distanza','m',0],['hsr','>20 km/h','m',0],['d25','>25 km/h','m',0],['hid','Acc>3 + Dec<−3','n',0],['vmax','Vmax','km/h',1],['rpe','RPE','',1],['srpe','sRPE','UA',0]];
+function cwDay(pid,d){const L=allEntries().filter(e=>e.p===pid&&e.date===d);const sr=srpeDay(pid,d);const w=wellOf(pid,d);
+ const g=k=>{const v=L.map(e=>val(e,k)).filter(x=>x!=null);return v.length?v.reduce((a,b)=>a+b,0):null};
+ const hsr=(g('d2025')??null)!=null||(g('d25')??null)!=null?(g('d2025')||0)+(g('d25')||0):null;const hid=g('acc3')!=null||g('dec3')!=null?(g('acc3')||0)+(g('dec3')||0):null;
+ const vm=L.map(e=>val(e,'vmax')).filter(x=>x!=null);
+ return {L,gps:L.length>0,match:L.some(e=>e.kind==='match'),min:g('min'),dist:g('dist'),hsr,d25:g('d25'),hid,vmax:vm.length?Math.max(...vm):null,rpe:num(w?.rpe),srpe:sr?.v??null}}
+function cwTot(D){const t={};for(const [k] of CW_K){const v=D.map(x=>x[k]).filter(x=>x!=null);t[k]=!v.length?null:k==='vmax'?Math.max(...v):k==='rpe'?mean(v):v.reduce((a,b)=>a+b,0)}t.n=D.filter(x=>x.gps).length;return t}
+function cwBars(days,A,B,k,dec,nA,nB){const W=1000,H=230,L=46,R=10,T=14,Bm=34,iw=W-L-R,ih=H-T-Bm;const all=[...A,...B].map(x=>x[k]).filter(v=>v!=null);if(!all.length)return '<div class="empty">Nessun dato per questo parametro nella settimana.</div>';
+ const mx=niceMax(Math.max(...all)*1.05);const y=v=>T+ih-v/mx*ih;const gw=iw/7,bw=Math.min(38,gw*.34);let g='';
+ for(let i=0;i<=4;i++){const v=mx*i/4;g+=`<line class="gl" x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${fmt(v,dec)}</text>`}
+ days.forEach((d,i)=>{const cx=L+gw*i+gw/2;const kk=isTrainDay(d)?soOfDate(d):null;const m=matchOn(d);
+  if(kk||m)g+=`<rect x="${L+gw*i+4}" y="${H-Bm+6}" width="${gw-8}" height="3" rx="1.5" fill="${m?'var(--club)':SO_PROF[kk].c}"/>`;
+  g+=`<text x="${cx}" y="${H-8}" text-anchor="middle">${esc(DOW_S[s2d(d).getDay()])} ${s2d(d).getDate()}</text>`;
+  [[A[i],'var(--s1)',-1,nA],[B[i],'var(--s2)',1,nB]].forEach(([x,c,s,n])=>{const v=x[k];if(v==null)return;const h=Math.max(2,y(0)-y(v));const bx=cx+(s<0?-bw-2:2);g+=`<rect x="${bx}" y="${y(v)}" width="${bw}" height="${h}" rx="4" fill="${c}"/>`});
+  const tip=`<b>${esc(DOW_FULL[s2d(d).getDay()])} ${esc(dShort(d))}</b><br>${esc(nA)}: ${A[i][k]==null?'–':fmt(A[i][k],dec)}<br>${esc(nB)}: ${B[i][k]==null?'–':fmt(B[i][k],dec)}`;
+  g+=`<rect x="${L+gw*i}" y="${T}" width="${gw}" height="${ih}" fill="transparent" data-tiph="${esc(tip)}"/>`});
+ g+=`<line class="ax" x1="${L}" x2="${W-R}" y1="${y(0)}" y2="${y(0)}"/>`;
+ return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Confronto giorno per giorno">${g}</svg>`}
+V10.cmpWeek=()=>{const wk=S.ui.wk;const days=dayList(wk);const ps=players();if(ps.length<2)return '<div class="card"><div class="empty">Servono almeno due giocatori.</div></div>';
+ const withData=ps.filter(p=>days.some(d=>allEntries().some(e=>e.p===p.id&&e.date===d)));
+ let a=S.ui.cwA,b=S.ui.cwB;if(!P(a))a=S.ui.cwA=(withData[0]||ps[0]).id;if(!P(b)||b===a)b=S.ui.cwB=(withData.find(p=>p.id!==a)||ps.find(p=>p.id!==a)).id;
+ const k=S.ui.cwK||'dist';const KD=CW_K.find(x=>x[0]===k);const pa=P(a),pb=P(b);
+ const DA=days.map(d=>cwDay(a,d)),DB=days.map(d=>cwDay(b,d));const TA=cwTot(DA),TB=cwTot(DB);
+ const sel=(id,cur)=>`<select class="inp" data-cwsel="${id}" style="font-weight:700">${ROLES.map(r=>{const g=ps.filter(x=>x.role===r.id);return g.length?`<optgroup label="${r.l}">${g.map(x=>`<option value="${x.id}" ${x.id===cur?'selected':''}>${esc(x.name)}${withData.includes(x)?'':' · senza dati'}</option>`).join('')}</optgroup>`:''}).join('')}</select>`;
+ const cell=(x,kk,dec)=>x[kk]==null?'<span class="muted">–</span>':fmt(x[kk],dec);
+ const diff=(va,vb,dec)=>{if(va==null||vb==null)return '';const dlt=vb-va;if(!va)return '';const pc=dlt/va*100;return `<span class="cw-d ${Math.abs(pc)<10?'':dlt>0?'up':'dn'}">${dlt>0?'+':''}${fmt(pc,0)}%</span>`};
+ const rA=reference(a,wk),rB=reference(b,wk),wA=weekTotal(a,wk),wB=weekTotal(b,wk);
+ const pctRow=['dist','d25','acc3'].map(kk=>`<div class="cw-pr"><span>${esc(MK[kk]?.s||kk)} % partita</span><b>${rA&&wA?cellPct(kk,pctOf(wA,rA.v,kk),pa.role):'–'}</b><b>${rB&&wB?cellPct(kk,pctOf(wB,rB.v,kk),pb.role):'–'}</b></div>`).join('');
+ let h=`<section class="card"><div class="card-h"><h2>Confronto settimana</h2><span class="sub">${esc(wkLabel(wk))} · giorno per giorno, allenamenti e partita. Cambia settimana in alto.</span></div>
+ <div class="card-b cw-pick"><div class="cw-p" style="--pc:var(--s1)"><i></i>${sel('A',a)}</div><button type="button" class="btn sm" id="cwSwap" aria-label="Scambia i giocatori">⇄</button><div class="cw-p" style="--pc:var(--s2)"><i></i>${sel('B',b)}</div></div>
+ <div class="card-b cw-sum">${CW_K.map(([kk,l,u,dec])=>`<div class="cw-k"><span>${l}</span><div><b style="color:var(--s1)">${cell(TA,kk,dec)}</b><b style="color:var(--s2)">${cell(TB,kk,dec)}</b></div><small>${u}${diff(TA[kk],TB[kk],dec)?' · '+esc(pb.name.split(' ')[0])+' '+diff(TA[kk],TB[kk],dec):''}</small></div>`).join('')}</div>
+ <div class="card-b"><div class="cw-prs"><div class="cw-pr head"><span></span><b style="color:var(--s1)">${esc(pa.name)}</b><b style="color:var(--s2)">${esc(pb.name)}</b></div><div class="cw-pr"><span>Sedute GPS</span><b>${TA.n}</b><b>${TB.n}</b></div>${pctRow}<div class="cw-pr"><span>Riferimento</span><b class="hint">${rA?esc(refLabel(rA)).slice(0,60):'–'}</b><b class="hint">${rB?esc(refLabel(rB)).slice(0,60):'–'}</b></div></div></div></section>`;
+ h+=`<section class="card"><div class="card-h"><h2>Giorno per giorno</h2><div class="seg" role="group">${CW_K.map(([kk,l])=>`<button type="button" data-cwk="${kk}" aria-pressed="${kk===k}">${l}</button>`).join('')}</div></div><div class="card-b">${cwBars(days,DA,DB,k,KD[3],pa.name,pb.name)}<div class="cw-leg"><span><i style="background:var(--s1)"></i>${esc(pa.name)}</span><span><i style="background:var(--s2)"></i>${esc(pb.name)}</span><span class="hint">la lineetta sotto il giorno è il colore dell’obiettivo</span></div></div></section>`;
+ h+=`<section class="card"><div class="card-h"><h2>Tabella</h2></div><div class="card-b flush"><div class="tw"><table class="t cw-t"><thead><tr><th>Giorno</th><th>Atleta</th>${CW_K.map(([kk,l])=>`<th class="n">${l}</th>`).join('')}</tr></thead><tbody>${days.map((d,i)=>{const kk=isTrainDay(d)?soOfDate(d):null;const m=matchOn(d);const lab=`<b>${esc(DOW_S[s2d(d).getDay()])} ${s2d(d).getDate()}</b> <small class="muted">${esc(mdForDate(d))}</small>${m?` <span class="tag match">vs ${esc(m.opp)}</span>`:kk?` <span class="soobj" style="--oc:${SO_PROF[kk].c}">${esc(SO_PROF[kk].l)}</span>`:''}`;
+  return [[DA[i],pa,'var(--s1)'],[DB[i],pb,'var(--s2)']].map(([x,p,c],j)=>`<tr class="${j?'cw-b':'cw-a'}">${j?'':`<td rowspan="2" class="cw-day">${lab}</td>`}<td style="border-left:3px solid ${c}">${esc(p.name.split(' ')[0])}${!x.gps&&x.rpe!=null?' <small class="muted">solo RPE</small>':''}</td>${CW_K.map(([kk,,,dec])=>`<td class="n">${cell(x,kk,dec)}</td>`).join('')}</tr>`).join('')}).join('')}
+  <tr class="cw-tot"><td rowspan="2"><b>Settimana</b></td><td style="border-left:3px solid var(--s1)">${esc(pa.name.split(' ')[0])}</td>${CW_K.map(([kk,,,dec])=>`<td class="n"><b>${cell(TA,kk,dec)}</b></td>`).join('')}</tr><tr class="cw-tot"><td style="border-left:3px solid var(--s2)">${esc(pb.name.split(' ')[0])}</td>${CW_K.map(([kk,,,dec])=>`<td class="n"><b>${cell(TB,kk,dec)}</b></td>`).join('')}</tr></tbody></table></div></div></section>`;
+ return h};
+document.addEventListener('change',ev=>{const t=ev.target;if(t.dataset?.cwsel){S.ui['cw'+t.dataset.cwsel]=t.value;if(S.ui.cwA===S.ui.cwB){const o=players().find(p=>p.id!==t.value);S.ui[t.dataset.cwsel==='A'?'cwB':'cwA']=o?.id}render()}});
+document.addEventListener('click',ev=>{const t=ev.target.closest('[data-cwk],#cwSwap');if(!t)return;if(t.id==='cwSwap'){[S.ui.cwA,S.ui.cwB]=[S.ui.cwB,S.ui.cwA];render();return}S.ui.cwK=t.dataset.cwk;render()});
+document.head.insertAdjacentHTML('beforeend',`<style id="cw19">
+.cw-pick{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.cw-p{display:flex;align-items:center;gap:8px;flex:1 1 220px}.cw-p i{width:12px;height:12px;border-radius:50%;background:var(--pc);flex:none}.cw-p select{flex:1}
+.cw-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:10px;padding-top:0}
+.cw-k{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:9px 11px;display:flex;flex-direction:column;gap:3px}
+.cw-k>span{font-size:10.5px;letter-spacing:.1em;color:var(--muted);font-weight:700;text-transform:uppercase}
+.cw-k div{display:flex;flex-direction:column;gap:3px}.cw-k b{font-family:var(--f-num);font-size:21px;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cw-k small{font-size:11px;color:var(--muted)}
+.cw-d{font-weight:700}.cw-d.up{color:#34d399}.cw-d.dn{color:#f5a524}
+.cw-prs{display:flex;flex-direction:column;gap:6px}.cw-pr{display:grid;grid-template-columns:150px 1fr 1fr;gap:10px;align-items:center;font-size:13px}.cw-pr span{color:var(--muted)}.cw-pr.head b{font-size:13px}
+.cw-leg{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12.5px;margin-top:8px}.cw-leg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-2px}
+.cw-t td.cw-day{vertical-align:top;background:var(--surface)!important;min-width:150px}
+.cw-t tr.cw-b td{border-bottom:2px solid var(--line-2)}
+.cw-t tr.cw-tot td{background:var(--surface-3)!important}
+@media (max-width:640px){.cw-pr{grid-template-columns:90px 1fr 1fr}}
+</style>`);
 
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
