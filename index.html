@@ -5456,6 +5456,15 @@ body.exporting .ci,body.exporting .ph-i{display:none!important}
 body.exporting *{animation:none!important;transition:none!important}
 @media (max-width:640px){.exp-menu{position:fixed;left:12px;right:12px;top:auto;bottom:calc(84px + env(safe-area-inset-bottom,0px));min-width:0}}
 </style>`);
+/* =====================================================================
+   v22 · MINUTI DELLA SEDUTA UGUALI PER TUTTI (anche nella pagina Wellness)
+   Allenamento: minuti = media dei minuti GPS di chi ha il GPS quel giorno, uguale
+   per tutta la rosa (anche per chi il GPS ce l’ha). Partita: minuti giocati.
+   Se quel giorno non c’è nessun GPS: durata scritta a mano o del Form.
+   ===================================================================== */
+sessMin=function(pid,date){const c=matchOn(date);if(c){const e=allEntries().find(x=>x.p===pid&&x.date===date&&x.kind==='match');const pm=playedMin(e,pid,date);if(pm?.min)return pm.min}return sessDur(date).min};
+{const _v=val;val=function(e,k){if(k==='srpe'&&e?.kind==='training'){const r=_v(e,'rpe');const m=sessDur(e.date)?.min??num(e.v?.min);return r!=null&&m!=null?r*m:null}return _v(e,k)}}
+{const _wd=V3.wDay;V3.wDay=()=>_wd().replace(/Minuti: quelli GPS della seduta del giocatore, altrimenti i minuti di squadra del Google Sheet\.?/,'Minuti: per gli allenamenti la media dei minuti GPS di chi ha il GPS quel giorno, uguale per tutta la rosa (anche per chi non ha il GPS); nelle partite i minuti giocati da ciascuno. Se quel giorno non c’è nessun GPS, la durata scritta a mano in Carico interno.')}
 
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
