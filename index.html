@@ -5465,6 +5465,229 @@ body.exporting *{animation:none!important;transition:none!important}
 sessMin=function(pid,date){const c=matchOn(date);if(c){const e=allEntries().find(x=>x.p===pid&&x.date===date&&x.kind==='match');const pm=playedMin(e,pid,date);if(pm?.min)return pm.min}return sessDur(date).min};
 {const _v=val;val=function(e,k){if(k==='srpe'&&e?.kind==='training'){const r=_v(e,'rpe');const m=sessDur(e.date)?.min??num(e.v?.min);return r!=null&&m!=null?r*m:null}return _v(e,k)}}
 {const _wd=V3.wDay;V3.wDay=()=>_wd().replace(/Minuti: quelli GPS della seduta del giocatore, altrimenti i minuti di squadra del Google Sheet\.?/,'Minuti: per gli allenamenti la media dei minuti GPS di chi ha il GPS quel giorno, uguale per tutta la rosa (anche per chi non ha il GPS); nelle partite i minuti giocati da ciascuno. Se quel giorno non c’è nessun GPS, la durata scritta a mano in Carico interno.')}
+/* =====================================================================
+   v23 · MODELLO PRESTATIVO DELLA SQUADRA (Partite → Modello prestativo)
+   Profilo fisico della partita per ruolo (dati GPS di partita riportati a ${mpDur()}′),
+   distribuzione della distanza per fasce di velocità, andamento partita per
+   partita, profilo tecnico-tattico da TacticalXG e sintesi per l’allenamento.
+   Limite: con i totali di partita non si calcolano i picchi (worst-case scenario).
+   ===================================================================== */
+PAGES.partite.tabs.push(['modello','Modello prestativo']);
+{const _pb=PAGE_BODY.partite;PAGE_BODY.partite=()=>curTab()==='modello'?V11.model():_pb()}
+const V11={};
+const MP_K=[['dist','Distanza','m',0],['dpm','m/min','m/min',1],['d1520','15–20 km/h','m',0],['d2025','20–25 km/h','m',0],['d25','>25 km/h','m',0],['hsr','>20 km/h','m',0],['acc3','Acc >3','n',0],['dec3','Dec <−3','n',0],['vmax','Vmax','km/h',1],['pm','Pot. metabolica','W/kg',1]];
+const mpDur=()=>S.settings.ref?.dur||90;
+const MP_RATE=new Set(['dist','d1520','d2025','d25','hsr','acc3','dec3']);
+function mpPerf(o){const min=o.min||45,last=o.last||0;let ms=playedMatches().filter(c=>c.date<=d2s(new Date()));if(last)ms=ms.slice(-last);const ids=new Set(ms.map(c=>c.id)),dates=new Set(ms.map(c=>c.date));
+ const L=[];for(const e of allEntries()){if(e.kind!=='match'||!(e.gid?ids.has(e.gid):dates.has(e.date)))continue;const p=P(e.p);if(!p)continue;const mi=val(e,'min');if(!mi||mi<min)continue;
+  const c=ms.find(x=>x.id===e.gid||x.date===e.date);const r={p,role:p.role,c,min:mi};for(const [k] of MP_K){const v=k==='dpm'?(val(e,'dist')!=null?val(e,'dist')/mi:null):val(e,k);r[k]=v==null?null:MP_RATE.has(k)?v/mi*mpDur():v}L.push(r)}
+ return {L,ms}}
+const mpStat=(L,k)=>{const v=L.map(x=>x[k]).filter(x=>x!=null);return v.length?{m:mean(v),s:v.length>1?sd(v):0,n:v.length,mx:Math.max(...v)}:null};
+function mpBandShare(L){const b=['d1520','d2025','d25'].map(k=>mpStat(L,k)?.m||0);const d=mpStat(L,'dist')?.m||0;if(!d)return null;const lo=Math.max(0,d-b.reduce((a,x)=>a+x,0));return [[lo,'<15 km/h','#94a3b8'],[b[0],'15–20','#38bdf8'],[b[1],'20–25','#f5a524'],[b[2],'>25','#e2364b']].map(([v,l,c])=>({v,l,c,p:v/d*100}))}
+V11.model=()=>{const o={min:+(S.ui.mpMin||45),last:+(S.ui.mpLast||0)};const {L,ms}=mpPerf(o);const k=S.ui.mpK||'dist';const KD=MP_K.find(x=>x[0]===k);
+ const out=L.filter(x=>x.role!=='PO');const roles=ROLES.filter(r=>L.some(x=>x.role===r.id));
+ const seg=(key,cur,opts)=>`<div class="seg" role="group">${opts.map(([v,l])=>`<button type="button" data-mp="${key}|${v}" aria-pressed="${String(cur)===String(v)}">${l}</button>`).join('')}</div>`;
+ let h=`<div class="row" style="gap:16px;flex-wrap:wrap">${flt('Partite',seg('mpLast',o.last,[[0,'Stagione'],[5,'Ultime 5'],[3,'Ultime 3']]))}${flt('Minuti minimi',seg('mpMin',o.min,[[45,'≥45′'],[60,'≥60′'],[75,'≥75′']]))}</div>`;
+ if(!L.length)return h+`<section class="card"><div class="empty"><b>Nessun dato GPS di partita</b>Il modello si costruisce con i file GPS delle partite (giocatori con almeno ${o.min}′). Caricali da Dati → Importa.</div></section>`+mpTact(ms);
+ const T=k2=>mpStat(out,k2);
+ h+=`<div class="kpis"><div class="kpi tone-acc"><span>Partite analizzate</span><b>${new Set(L.map(x=>x.c?.id)).size}</b><small>${L.length} prestazioni ≥${o.min}′</small></div><div class="kpi"><span>Distanza a ${mpDur()}′</span><b>${fmt(T('dist')?.m)}<small> m</small></b><small>±${fmt(T('dist')?.s)} · giocatori di movimento</small></div><div class="kpi"><span>Intensità</span><b>${fmt(T('dpm')?.m,1)}<small> m/min</small></b></div><div class="kpi"><span>Oltre 20 km/h a ${mpDur()}′</span><b>${fmt(T('hsr')?.m)}<small> m</small></b><small>di cui >25: ${fmt(T('d25')?.m)} m</small></div><div class="kpi"><span>Acc + Dec intense a ${mpDur()}′</span><b>${fmt((T('acc3')?.m||0)+(T('dec3')?.m||0))}</b><small>>3 e <−3 m/s²</small></div><div class="kpi"><span>Vmax media in partita</span><b>${fmt(T('vmax')?.m,1)}<small> km/h</small></b><small>massima ${fmt(T('vmax')?.mx,1)}</small></div></div>`;
+ /* tabella per ruolo */
+ const cell=(st,dec)=>st?`<b>${fmt(st.m,dec)}</b><small class="muted"> ±${fmt(st.s,dec)}</small>`:'<span class="muted">–</span>';
+ h+=`<section class="card"><div class="card-h"><h2>Profilo fisico della partita per ruolo</h2><span class="sub">Media ± deviazione standard delle prestazioni con almeno ${o.min}′, volumi riportati a ${mpDur()}′ (la durata di partita impostata nel Metodo). Vmax e potenza metabolica sono medie, non riportate. È il «modello» a cui riferire l’allenamento di ogni ruolo.</span></div><div class="card-b flush"><div class="tw"><table class="t"><thead><tr><th>Ruolo</th><th class="n">N</th><th class="n">Min. medi</th>${MP_K.map(([,l])=>`<th class="n">${l}</th>`).join('')}</tr></thead><tbody>
+  ${roles.map(r=>{const R=L.filter(x=>x.role===r.id);return `<tr><td class="name">${esc(r.l)}</td><td class="n">${R.length}</td><td class="n">${fmt(mean(R.map(x=>x.min)))}</td>${MP_K.map(([kk,,,dec])=>`<td class="n">${cell(mpStat(R,kk),dec)}</td>`).join('')}</tr>`}).join('')}
+  <tr class="cw-tot"><td class="name"><b>Squadra (movimento)</b></td><td class="n">${out.length}</td><td class="n">${fmt(mean(out.map(x=>x.min)))}</td>${MP_K.map(([kk,,,dec])=>`<td class="n">${cell(mpStat(out,kk),dec)}</td>`).join('')}</tr></tbody></table></div></div></section>`;
+ /* grafico per ruolo + distribuzione velocità */
+ const rs=roles.filter(r=>r.id!=='PO');
+ h+=`<div class="grid g2"><section class="card"><div class="card-h"><h2>Confronto tra ruoli</h2>${seg('mpK',k,MP_K.map(x=>[x[0],x[1]]))}</div><div class="card-b">${barChart({labels:rs.map(r=>r.id),vals:rs.map(r=>mpStat(L.filter(x=>x.role===r.id),k)?.m??null),colors:rs.map(r=>ROLE_COL[r.id]||'var(--s1)'),yfmt:v=>fmt(v,KD[3]),aria:'Modello per ruolo',tip:i=>{const st=mpStat(L.filter(x=>x.role===rs[i].id),k);return `<b>${esc(rs[i].l)}</b><br>${KD[1]}: ${st?fmt(st.m,KD[3])+' ± '+fmt(st.s,KD[3]):'–'} ${KD[2]}${MP_RATE.has(k)?' a '+mpDur()+'′':''}<br>${st?.n||0} prestazioni`}})}</div></section>
+  <section class="card"><div class="card-h"><h2>Come corrono: distanza per fasce di velocità</h2><span class="sub">Quota della distanza a ${mpDur()}′ in ogni fascia</span></div><div class="card-b" style="display:flex;flex-direction:column;gap:10px">${[...rs.map(r=>[r.l,L.filter(x=>x.role===r.id)]),['Squadra',out]].map(([l,R])=>{const B=mpBandShare(R);return B?`<div class="mp-band"><span>${esc(l)}</span><div>${B.map(x=>`<i style="width:${x.p}%;background:${x.c}" data-tip="${esc(x.l+': '+fmt(x.v)+' m · '+fmt(x.p,1)+'%')}"></i>`).join('')}</div><small>${fmt(B[2].p+B[3].p,1)}% oltre 20</small></div>`:''}).join('')}<div class="cw-leg">${[['#94a3b8','sotto 15 km/h'],['#38bdf8','15–20'],['#f5a524','20–25'],['#e2364b','oltre 25']].map(([c,l])=>`<span><i style="background:${c}"></i>${l}</span>`).join('')}</div></div></section></div>`;
+ /* partita per partita */
+ const per=ms.map(c=>{const R=out.filter(x=>x.c?.id===c.id);const s=matchScore(c);return {c,s,n:R.length,dpm:mpStat(R,'dpm')?.m,hsr:mpStat(R,'hsr')?.m,d25:mpStat(R,'d25')?.m,hid:R.length?mean(R.map(x=>(x.acc3||0)+(x.dec3||0))):null,dist:mpStat(R,'dist')?.m,xgF:c.txg?.n?.xg,xgA:c.txg?.a?.xg}}).filter(x=>x.n);
+ if(per.length){h+=`<section class="card"><div class="card-h"><h2>Partita per partita</h2><span class="sub">Medie dei giocatori di movimento con almeno ${o.min}′ · a ${mpDur()}′</span></div><div class="card-b">${lineChart({labels:per.map(x=>x.c.opp.slice(0,10)),aria:'Andamento partite',series:[{name:'Distanza a '+mpDur()+'′ (÷100)',color:'var(--s1)',vals:per.map(x=>x.dist!=null?x.dist/100:null)},{name:'>20 km/h a '+mpDur()+'′ (÷10)',color:'var(--s2)',vals:per.map(x=>x.hsr!=null?x.hsr/10:null)},{name:'m/min',color:'var(--s3)',vals:per.map(x=>x.dpm)}],yfmt:v=>fmt(v,0),h:210,w:1100})}</div>
+  <div class="card-b flush"><div class="tw"><table class="t"><thead><tr><th>Partita</th><th>Esito</th><th class="n">Gioc.</th><th class="n">Distanza</th><th class="n">m/min</th><th class="n">>20 km/h</th><th class="n">>25 km/h</th><th class="n">Acc+Dec</th><th class="n">xG fatti</th><th class="n">xG subiti</th></tr></thead><tbody>${per.map(x=>`<tr class="click" data-match="${x.c.id}"><td class="name">G${x.c.g||''} ${esc(x.c.opp)} <small class="muted">${esc(dShort(x.c.date))}</small></td><td>${esc(x.c.res||'')} ${x.s?`<span class="tag">${x.s.o}</span>`:''}</td><td class="n">${x.n}</td><td class="n">${fmt(x.dist)}</td><td class="n">${fmt(x.dpm,1)}</td><td class="n">${fmt(x.hsr)}</td><td class="n">${fmt(x.d25)}</td><td class="n">${fmt(x.hid)}</td><td class="n">${fmt(x.xgF,2)}</td><td class="n">${fmt(x.xgA,2)}</td></tr>`).join('')}</tbody></table></div></div></section>`}
+ h+=mpTact(ms);
+ /* confronto con la letteratura */
+ const lit=mpLit(out,L);h+=lit;
+ /* sintesi */
+ const S1=[];const dd=T('dist'),hs=T('hsr'),d25=T('d25'),vm=T('vmax');
+ if(dd)S1.push(`In partita un giocatore di movimento copre in media <b>${fmt(dd.m)} m a ${mpDur()}′</b> (${fmt(T('dpm')?.m,1)} m/min), di cui <b>${fmt(hs?.m)} m oltre 20 km/h</b> e <b>${fmt(d25?.m)} m oltre 25 km/h</b>.`);
+ const byR=rs.map(r=>({r,st:mpStat(L.filter(x=>x.role===r.id),'hsr'),dt:mpStat(L.filter(x=>x.role===r.id),'dist'),ac:mpStat(L.filter(x=>x.role===r.id),'acc3')})).filter(x=>x.st);
+ if(byR.length>1){const a=byR.slice().sort((x,y)=>y.st.m-x.st.m);S1.push(`Più corsa ad alta velocità: <b>${esc(a[0].r.l)}</b> (${fmt(a[0].st.m)} m a ${mpDur()}′); meno: <b>${esc(a[a.length-1].r.l)}</b> (${fmt(a[a.length-1].st.m)} m). Il lavoro di velocità e di resistenza ad alta intensità va dosato per ruolo.`);
+  const c=byR.filter(x=>x.ac).sort((x,y)=>y.ac.m-x.ac.m);if(c.length>1)S1.push(`Più accelerazioni intense: <b>${esc(c[0].r.l)}</b> (${fmt(c[0].ac.m)} a ${mpDur()}′): è il ruolo che più ha bisogno del giorno di forza e frenate (MD-4).`)}
+ if(vm)S1.push(`Vmax media in partita ${fmt(vm.m,1)} km/h: per stimolare la velocità vera servono sprint sopra il 90% del record personale di ciascuno (vedi Prestazione → Soglie personali).`);
+ const tx=ms.filter(c=>c.txg?.n);if(tx.length){const az={};for(const c of tx)for(const [kk,v] of Object.entries(c.txg.n.azioni||{}))az[kk]=(az[kk]||0)+(v.n||0);const tot=Object.values(az).reduce((a,b)=>a+b,0);const top=Object.entries(az).sort((a,b)=>b[1]-a[1]).slice(0,2);if(tot)S1.push(`I nostri tiri nascono soprattutto da <b>${top.map(([kk,n])=>`${kk} (${fmt(n/tot*100,0)}%)`).join(' e ')}</b>: le esercitazioni a tema possono riprodurre queste situazioni.`)}
+ S1.push('Limite: con i totali di partita non si calcolano i picchi d’intensità (i minuti più intensi, «worst-case scenario»). Per quelli servono i dati GPS istante per istante dal software del GPS.');
+ h+=`<section class="card"><div class="card-h"><h2>In sintesi</h2></div><div class="card-b"><ul class="mp-sum">${S1.map(x=>`<li>${x}</li>`).join('')}</ul></div></section>`;
+ return h};
+const MP_REF=[
+ ['Buchheit et al., 2010 · Int J Sports Med','Giovani d’élite U13–U18, 186 partite con GPS. Corsa che cresce con l’età; centrali difensivi meno distanza e meno alta intensità, centrocampisti più distanza, esterni e attaccanti più corsa ad alta intensità. U16: circa 104 m/min, picco di velocità 26,3 km/h, corsa >19 km/h circa il 5% della distanza.','https://doi.org/10.1055/s-0030-1262838'],
+ ['Palucci Vieira et al., 2019 · Sports Medicine (revisione sistematica)','Corsa in partita dei giovani calciatori: con soglie fisse aumenta con l’età; U15–U17 tra circa 95 e 118 m/min a seconda degli studi; le differenze tra ruoli seguono lo schema sopra; soglie diverse rendono i confronti tra studi solo indicativi.','https://clok.uclan.ac.uk/24825'],
+ ['Saward et al., 2016 · Scand J Med Sci Sports','Accademie inglesi, 988 partite di giocatori 8–18 anni: la corsa in partita cresce con l’età; nella revisione di Vieira (2019) l’U16 è riportato a circa 110 m/min.','https://irep.ntu.ac.uk/id/eprint/9182/'],
+ ['Harley et al., 2010 · J Sports Sci','U12–U16 d’élite: l’U16 copre più distanza assoluta e ad alta intensità delle età più giovani; rapportate al tempo di gioco le differenze si riducono.','https://research.tees.ac.uk/en/publications/motion-analysis-of-match-play-in-elite-u12-to-u16-age-group-socce/'],
+ ['Osgnach et al., 2010 · Med Sci Sports Exerc','Potenza metabolica: costo energetico di corsa, accelerazioni e frenate insieme.','https://pubmed.ncbi.nlm.nih.gov/20010116/']];
+function mpLit(out,L){const T=k=>mpStat(out,k);const dpm=T('dpm')?.m,dist=T('dist')?.m,hsr=T('hsr')?.m,vm=T('vmax')?.m;if(dpm==null)return '';
+ const share=dist&&hsr!=null?hsr/dist*100:null;const st=(v,lo,hi)=>v==null?'info':v<lo?'under':v>hi?'over':'ok';const lab={under:'sotto',ok:'in linea',over:'sopra',info:'–'};
+ const rows=[['Intensità (m/min)',fmt(dpm,1),'≈ 95–118 (U16 ≈ 104–110)',st(dpm,95,118),'Buchheit 2010; Saward 2016; Vieira 2019'],
+  ['Quota di distanza oltre ~20 km/h',share!=null?fmt(share,1)+'%':'–','≈ 5% (soglia 19,1 km/h)',st(share,3.5,8),'Buchheit 2010'],
+  ['Velocità massima in partita',vm!=null?fmt(vm,1)+' km/h':'–','≈ 26–27 km/h (U16, GPS 2010)',st(vm,25,28.5),'Buchheit 2010',true]];
+ const rk=k=>{const v=ROLES.filter(r=>r.id!=='PO').map(r=>({r,s:mpStat(L.filter(x=>x.role===r.id),k)})).filter(x=>x.s&&x.s.n>=2);return v.sort((a,b)=>b.s.m-a.s.m)};
+ const chk=[];const dR=rk('dist'),hR=rk('hsr');
+ if(dR.length>=3){const lo=dR[dR.length-1].r.id,hi=dR[0].r.id;chk.push(`Distanza: più alta <b>${esc(ROLE[hi]?.l||hi)}</b>, più bassa <b>${esc(ROLE[lo]?.l||lo)}</b> — ${lo==='DC'&&(hi==='CC'||hi==='ES')?'come in letteratura (centrali meno, centrocampisti di più).':'in letteratura di solito i centrali corrono meno e i centrocampisti di più: guarda se dipende dal vostro sistema di gioco o dalle prestazioni incluse.'}`)}
+ if(hR.length>=3){const hi=hR[0].r.id;chk.push(`Alta velocità: più alta <b>${esc(ROLE[hi]?.l||hi)}</b> — ${['ES','AT','TZ'].includes(hi)?'in linea con la letteratura (esterni e attaccanti corrono di più ad alta intensità).':'in letteratura di solito sono esterni e attaccanti: può dipendere dal sistema di gioco o da poche partite.'}`)}
+ return `<section class="card"><div class="card-h"><h2>Confronto con la letteratura scientifica</h2><span class="sub">Valori di riferimento per giovani d’élite di età simile. Soglie di velocità, durata delle partite e sistemi GPS diversi rendono il confronto indicativo, non un giudizio.</span></div>
+ <div class="card-b flush"><div class="tw"><table class="t"><thead><tr><th>Parametro</th><th class="n">Noi</th><th>Riferimento</th><th>Esito</th><th>Fonte</th></tr></thead><tbody>${rows.map(r=>`<tr><td class="name">${r[0]}</td><td class="n">${r[1]}</td><td>${r[2]}</td><td><span class="cell ${r[5]&&r[3]==='over'?'ok':r[3]}">${lab[r[3]]}</span></td><td class="muted">${r[4]}</td></tr>`).join('')}</tbody></table></div></div>
+ ${chk.length?`<div class="card-b"><ul class="mp-sum">${chk.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:''}
+ <div class="card-b"><div class="mp-refs">${MP_REF.map(([t,d,u])=>`<div><b>${esc(t)}</b><span>${esc(d)}</span><a href="${u}" target="_blank" rel="noopener">Apri lo studio</a></div>`).join('')}</div></div></section>`}
+function mpTact(ms){const tx=ms.filter(c=>c.txg?.n&&c.txg?.a);if(!tx.length)return '';const n=tx.length;
+ const sum=(side,k)=>tx.reduce((a,c)=>a+(num(c.txg[side][k])||0),0)/n;
+ const agg=(side,key)=>{const o={};for(const c of tx)for(const [kk,v] of Object.entries(c.txg[side][key]||{})){o[kk]=o[kk]||{n:0,xg:0,gol:0};o[kk].n+=v.n||0;o[kk].xg+=v.xg||0;o[kk].gol+=v.gol||0}return Object.entries(o).sort((a,b)=>b[1].n-a[1].n)};
+ const fas=side=>{const f=[0,0,0,0,0,0];const x=[0,0,0,0,0,0];for(const c of tx)(c.txg[side].fasce||[]).forEach((v,i)=>{if(i<6){f[i]+=v.n||0;x[i]+=v.xg||0}});return {f,x}};
+ const FN=fas('n'),FA=fas('a');const labs=["0–15′","15–30′","30–45′","45–60′","60–75′","75–90′"];
+ const tbl=(rows,tot)=>`<table class="t"><thead><tr><th>Tipo</th><th class="n">Tiri</th><th class="n">%</th><th class="n">xG</th><th class="n">Gol</th></tr></thead><tbody>${rows.map(([kk,v])=>`<tr><td>${esc(kk)}</td><td class="n">${v.n}</td><td class="n">${fmt(v.n/tot*100,0)}%</td><td class="n">${fmt(v.xg,2)}</td><td class="n">${v.gol}</td></tr>`).join('')}</tbody></table>`;
+ const aN=agg('n','azioni'),aA=agg('a','azioni');const tN=aN.reduce((a,x)=>a+x[1].n,0)||1,tA=aA.reduce((a,x)=>a+x[1].n,0)||1;
+ return `<section class="card"><div class="card-h"><h2>Profilo tecnico-tattico (TacticalXG)</h2><span class="sub">${n} partite con la mappa dei tiri · medie a partita</span></div>
+ <div class="card-b"><div class="kpis"><div class="kpi"><span>xG fatti</span><b>${fmt(sum('n','xg'),2)}</b><small>gol ${fmt(sum('n','gol'),1)} a partita</small></div><div class="kpi"><span>xG subiti</span><b>${fmt(sum('a','xg'),2)}</b><small>gol ${fmt(sum('a','gol'),1)} a partita</small></div><div class="kpi"><span>Tiri fatti / subiti</span><b>${fmt(sum('n','tot'),1)} <small>/ ${fmt(sum('a','tot'),1)}</small></b><small>in porta ${fmt(sum('n','porta'),1)} / ${fmt(sum('a','porta'),1)}</small></div><div class="kpi"><span>Grandi occasioni</span><b>${fmt(sum('n','big'),1)} <small>/ ${fmt(sum('a','big'),1)}</small></b><small>xG ≥ 0,35 · fatte / concesse</small></div></div></div>
+ <div class="card-b grid g2" style="gap:18px"><div><h3 class="mp-h3">Come tiriamo noi</h3><div class="tw">${tbl(aN,tN)}</div></div><div><h3 class="mp-h3">Come tirano gli avversari</h3><div class="tw">${tbl(aA,tA)}</div></div></div>
+ <div class="card-b"><h3 class="mp-h3">Quando: tiri per quarto d’ora (totale)</h3>${lineChart({labels:labs,aria:'Tiri per fascia',series:[{name:'Tiri fatti',color:'var(--s1)',vals:FN.f},{name:'Tiri subiti',color:'var(--club)',vals:FA.f}],yfmt:v=>fmt(v,0),h:180,w:1100})}</div></section>`}
+document.addEventListener('click',ev=>{const t=ev.target.closest('[data-mp]');if(!t)return;const [k,v]=t.dataset.mp.split('|');S.ui[k]=isNaN(+v)?v:+v;render()});
+document.head.insertAdjacentHTML('beforeend',`<style id="mp23">
+.mp-band{display:grid;grid-template-columns:150px minmax(0,1fr) 92px;gap:10px;align-items:center;font-size:13px}
+.mp-band>div{display:flex;height:16px;border-radius:5px;overflow:hidden;background:var(--sunk)}.mp-band i{display:block;height:100%}
+.mp-band small{color:var(--muted);text-align:right}
+.mp-sum{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px;line-height:1.5}
+.mp-refs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}.mp-refs div{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);font-size:12.5px}.mp-refs b{font-size:13px}.mp-refs span{color:var(--ink-2);line-height:1.45}.mp-refs a{font-size:12px}
+.mp-band+.cw-leg{margin-top:4px}
+.mp-h3{font-size:15px;letter-spacing:.04em;text-transform:uppercase;margin:0 0 8px}
+@media (max-width:640px){.mp-band{grid-template-columns:90px minmax(0,1fr) 70px}}
+</style>`);
+/* =====================================================================
+   v24 · ROTAZIONE DEI GPS (Squadra → Rotazione GPS)
+   Ogni N settimane (predefinito 3) i GPS passano ad altri ragazzi: l’app
+   propone chi, partendo da chi ha meno sedute con il GPS, coprendo tutti i
+   ruoli ed escludendo gli infortunati. Avviso in Oggi a ridosso del cambio;
+   la notifica sul telefono arriva da un’attività programmata il lunedì.
+   ===================================================================== */
+const GPSR_DEF_START='2026-10-26';
+PAGES.squadra.tabs.push(['gps','Rotazione GPS']);
+{const _pb=PAGE_BODY.squadra;PAGE_BODY.squadra=()=>curTab()==='gps'?V12.gps():_pb()}
+const V12={};
+function gpsCfg(){const g=S.settings.gpsRot||{};return {n:g.n||gpsAutoN(),weeks:g.weeks||3,start:g.start||GPSR_DEF_START,cur:Array.isArray(g.cur)?g.cur.filter(id=>P(id)):null,gk:!!g.gk,hist:g.hist||[]}}
+function gpsSet(o){S.settings.gpsRot={...(S.settings.gpsRot||{}),...o};saveSettings();invalidate()}
+function gpsAutoN(){const t=d2s(new Date());const by={};for(const e of allEntries())if(e.kind==='training'&&e.date>addDays(t,-28)&&e.date<=t)(by[e.date]=by[e.date]||new Set()).add(e.p);return Math.max(4,...Object.values(by).map(s=>s.size))}
+function gpsN(pid,days){const t=d2s(new Date());const from=addDays(t,-days);return allEntries().filter(e=>e.p===pid&&e.kind==='training'&&e.date>from&&e.date<=t).length}
+function gpsLast(pid){const l=allEntries().filter(e=>e.p===pid&&e.kind==='training').map(e=>e.date).sort();return l[l.length-1]||null}
+function gpsCurGroup(c=gpsCfg()){if(c.cur?.length)return c.cur;const t=d2s(new Date());return players().map(p=>({p,n:gpsN(p.id,21)})).filter(x=>x.n).sort((a,b)=>b.n-a.n).slice(0,c.n).map(x=>x.p.id)}
+function gpsNext(c=gpsCfg()){return addDays(c.start,c.weeks*7)}
+function gpsInjured(pid){const i=injuryInWeek(pid,todayWeek());return !!i&&i.status!=='chiuso'}
+function gpsSuggest(c=gpsCfg()){const cur=new Set(gpsCurGroup(c));const ps=players().filter(p=>(c.gk||p.role!=='PO')&&!p.noGps&&!gpsInjured(p.id));
+ const sc=p=>[gpsN(p.id,63),gpsLast(p.id)||'0000'];const sort=(a,b)=>{const x=sc(a),y=sc(b);return x[0]-y[0]||x[1].localeCompare(y[1])};
+ const pool=ps.filter(p=>!cur.has(p.id)).sort(sort);const out=[];
+ for(const r of ROLES){if(out.length>=c.n)break;if(r.id==='PO'&&!c.gk)continue;const p=pool.find(x=>x.role===r.id&&!out.includes(x));if(p)out.push(p)}
+ for(const p of pool){if(out.length>=c.n)break;if(!out.includes(p))out.push(p)}
+ if(out.length<c.n)for(const p of ps.filter(p=>cur.has(p.id)).sort(sort)){if(out.length>=c.n)break;out.push(p)}
+ return out.map(p=>p.id)}
+function gpsDaysTo(){const t=d2s(new Date());return Math.round((s2d(gpsNext())-s2d(t))/864e5)}
+V12.gps=()=>{const c=gpsCfg();const cur=gpsCurGroup(c);const nx=gpsNext(c);const dd=gpsDaysTo();const sug=S.ui.gpsSel||gpsSuggest(c);
+ const chip=id=>{const p=P(id);return p?`<span class="gps-chip" style="--rc:${ROLE_COL[p.role]||'var(--s1)'}"><i></i>${esc(p.name)}<small>${esc(p.role||'')}</small></span>`:''};
+ const when=dd>1?`tra ${dd} giorni`:dd===1?'domani':dd===0?'oggi':`in ritardo di ${-dd} giorn${dd===-1?'o':'i'}`;
+ let h=`<section class="card"><div class="card-h"><h2>Rotazione dei GPS</h2><span class="sub">Ogni ${c.weeks} settimane i GPS passano ad altri ragazzi, così tutti hanno dati propri: riferimento di partita, ACWR, carico e velocità. Il promemoria arriva anche sul telefono il lunedì del cambio.</span></div>
+ <div class="card-b row" style="gap:16px;flex-wrap:wrap;align-items:flex-end">${flt('GPS disponibili',`<input class="ni" id="gpsN" value="${c.n}" inputmode="numeric" style="width:64px">`)}${flt('Cambio ogni',`<div class="seg" role="group">${[2,3,4].map(w=>`<button type="button" data-gpsw="${w}" aria-pressed="${w===c.weeks}">${w} settimane</button>`).join('')}</div>`)}${flt('Portieri',`<div class="seg" role="group"><button type="button" data-gpsgk="0" aria-pressed="${!c.gk}">Esclusi</button><button type="button" data-gpsgk="1" aria-pressed="${c.gk}">Inclusi</button></div>`)}${flt('Inizio del ciclo attuale',`<input type="date" class="inp" id="gpsStart" value="${c.start}">`)}</div>
+ <div class="card-b gps-now"><div><span class="gps-l">Hanno il GPS adesso${c.cur?.length?'':' (secondo i dati delle ultime 3 settimane)'}</span><div class="gps-chips">${cur.map(chip).join('')||'<span class="muted">nessuno</span>'}</div></div>
+  <div class="gps-next ${dd<=0?'due':dd<=3?'soon':''}"><span class="gps-l">Prossimo cambio</span><b>${esc(DOW_FULL[s2d(nx).getDay()])} ${esc(dShort(nx))}</b><small>${when}</small></div></div></section>`;
+ h+=`<section class="card"><div class="card-h"><h2>Chi prende i GPS al prossimo cambio</h2><span class="sub">Proposta: chi ha meno sedute con il GPS nelle ultime 9 settimane, almeno uno per ruolo, esclusi gli infortunati${c.gk?'':' e i portieri'}. Spunta o togli e conferma quando consegni i GPS.</span></div>
+ <div class="card-b"><div class="gps-pick">${players().filter(p=>c.gk||p.role!=='PO').map(p=>{const on=sug.includes(p.id);const n9=gpsN(p.id,63);const inj=gpsInjured(p.id);return `<label class="gps-row ${on?'on':''}"><input type="checkbox" data-gpssel="${p.id}" ${on?'checked':''}><span class="gps-nm">${esc(p.name)}<small>${esc(ROLE[p.role]?.l||p.role||'')}${inj?' · infortunato':''}${cur.includes(p.id)?' · ha il GPS ora':''}</small></span><span class="gps-n"><b>${n9}</b><small>sedute GPS (9 sett.)</small></span><span class="gps-d">${gpsLast(p.id)?'ultima '+esc(dShort(gpsLast(p.id))):'mai'}</span></label>`}).join('')}</div>
+ <div class="row" style="gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center"><button type="button" class="btn pri" id="gpsGo">Conferma: da oggi hanno il GPS questi ${sug.length}</button><button type="button" class="btn ghost" id="gpsReset">Torna alla proposta</button>${sug.length!==c.n?`<span class="hint">Selezionati ${sug.length} su ${c.n} GPS disponibili.</span>`:''}</div></div></section>`;
+ if(c.hist.length)h+=`<section class="card"><div class="card-h"><h2>Cambi precedenti</h2></div><div class="card-b flush"><div class="tw"><table class="t"><thead><tr><th>Dal</th><th>Giocatori</th></tr></thead><tbody>${c.hist.slice().reverse().map(x=>`<tr><td>${esc(dShort(x.start))}</td><td>${x.ids.map(id=>esc(pName(id))).join(', ')}</td></tr>`).join('')}</tbody></table></div></div></section>`;
+ return h};
+document.addEventListener('click',ev=>{const t=ev.target.closest('[data-gpsw],[data-gpsgk],#gpsGo,#gpsReset,[data-gpsopen]');if(!t)return;
+ if(t.dataset.gpsopen!=null){S.ui.tabs.squadra='gps';go('squadra');return}
+ if(t.dataset.gpsw){gpsSet({weeks:+t.dataset.gpsw});render();return}
+ if(t.dataset.gpsgk){gpsSet({gk:t.dataset.gpsgk==='1'});S.ui.gpsSel=null;render();return}
+ if(t.id==='gpsReset'){S.ui.gpsSel=null;render();return}
+ if(t.id==='gpsGo'){const ids=S.ui.gpsSel||gpsSuggest();if(!ids.length){toast('Scegli almeno un giocatore.');return}const start=d2s(new Date());const c=gpsCfg();
+  confirmBox('Confermare il cambio dei GPS?',`Da oggi (${dShort(start)}) hanno il GPS: ${ids.map(pName).join(', ')}. Prossimo cambio: ${dShort(addDays(start,c.weeks*7))}.`,'Conferma',()=>{gpsSet({start,cur:ids,n:c.n,weeks:c.weeks,hist:[...(c.hist||[]),{start,ids}].slice(-30)});S.ui.gpsSel=null;render();toast('Cambio registrato.')})}});
+document.addEventListener('change',ev=>{const t=ev.target;if(t.dataset?.gpssel){const cur=new Set(S.ui.gpsSel||gpsSuggest());t.checked?cur.add(t.dataset.gpssel):cur.delete(t.dataset.gpssel);S.ui.gpsSel=[...cur];render();return}
+ if(t.id==='gpsN'){const v=Math.round(num(t.value));if(v>0&&v<40){gpsSet({n:v});S.ui.gpsSel=null;render()}return}
+ if(t.id==='gpsStart'&&t.value){gpsSet({start:t.value});render()}});
+/* avviso in Oggi a ridosso del cambio */
+{const _td=V4.today;V4.today=()=>{const h=_td();try{const dd=gpsDaysTo();if(dd>3||!players().length)return h;const nx=gpsNext();const sug=gpsSuggest();
+ return `<div class="note gps-alert"><b>🔁 Cambio GPS ${dd<0?`in ritardo di ${-dd} giorn${dd===-1?'o':'i'}`:dd===0?'oggi':`${esc(DOW_FULL[s2d(nx).getDay()])} ${esc(dShort(nx))}`}</b> · proposta: ${sug.map(id=>esc(pName(id))).join(', ')} <button type="button" class="btn sm" data-gpsopen>Apri</button></div>`+h}catch(e){return h}}}
+document.head.insertAdjacentHTML('beforeend',`<style id="gps24">
+.gps-now{display:flex;gap:16px;flex-wrap:wrap;align-items:stretch}.gps-now>div:first-child{flex:1 1 380px}
+.gps-l{display:block;font-size:11px;letter-spacing:.12em;color:var(--muted);font-weight:700;text-transform:uppercase;margin-bottom:8px}
+.gps-chips{display:flex;flex-wrap:wrap;gap:6px}.gps-chip{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);font-weight:600;font-size:13px}.gps-chip i{width:9px;height:9px;border-radius:50%;background:var(--rc)}.gps-chip small{color:var(--muted);font-weight:700;font-size:10.5px}
+.gps-next{flex:0 0 220px;background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:12px 16px;display:flex;flex-direction:column;gap:2px}.gps-next b{font-family:var(--f-display);font-size:26px;letter-spacing:.02em}.gps-next small{color:var(--ink-2)}
+.gps-next.soon{border-color:#f5a524}.gps-next.due{border-color:var(--club);background:rgba(226,54,75,.12)}
+.gps-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px}
+.gps-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:'c n k' 'c d k';gap:2px 10px;align-items:center;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);cursor:pointer}
+.gps-row input{grid-area:c;width:17px;height:17px}.gps-row.on{border-color:var(--accent);background:var(--accent-soft)}
+.gps-nm{grid-area:n;font-weight:700;font-size:13.5px;display:flex;flex-direction:column}.gps-nm small{font-weight:500;color:var(--muted);font-size:11.5px}
+.gps-n{grid-area:k;display:flex;flex-direction:column;align-items:flex-end}.gps-n b{font-family:var(--f-num);font-size:22px;line-height:1}.gps-n small{font-size:10px;color:var(--muted)}
+.gps-d{grid-area:d;font-size:11.5px;color:var(--muted)}
+.gps-alert{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}.gps-alert .btn{margin-left:auto}
+</style>`);
+/* =====================================================================
+   v25 · REGISTRA LA SEDUTA A VOCE (Lavoro atletico → Registra seduta)
+   Detti (microfono dell’app o della tastiera) o incolli la trascrizione di
+   una nota vocale; l’AI la trasforma in una seduta strutturata (stesso
+   formato dei PDF), la controlli, la salvi e viene analizzata dall’AI.
+   Sull’app GitHub il testo va a Drive come PDF e lo legge il giro programmato.
+   ===================================================================== */
+{const T=PAGES.atletica.tabs;const i=T.findIndex(t=>t[0]==='sedute');T.splice(i+1,0,['registra','Registra seduta'])}
+{const _pb=PAGE_BODY.atletica;PAGE_BODY.atletica=()=>curTab()==='registra'?VA.registra():_pb()}
+const REC={on:false,sr:null,keep:false};
+function recDraft(){try{return JSON.parse(localStorage.getItem('el-rec')||'{}')}catch(e){return {}}}
+function recSave(o){try{localStorage.setItem('el-rec',JSON.stringify({...recDraft(),...o}))}catch(e){}}
+const recSR=()=>window.SpeechRecognition||window.webkitSpeechRecognition||null;
+VA.registra=()=>{const d=recDraft();const date=d.date||d2s(new Date());const place=d.place||'campo';const k=soOfDate(date);const P0=k?SO_PROF[k]:null;
+ return `<section class="card"><div class="card-h"><h2>Registra la seduta</h2><span class="sub">Racconta a voce quello che fai (esercizi, serie, ripetizioni, chili, metri, recuperi, gruppi): l’app lo trascrive, l’AI crea la seduta, tu la controlli e la salvi, poi l’AI la valuta rispetto all’obiettivo del giorno.</span></div>
+ <div class="card-b row" style="gap:16px;flex-wrap:wrap;align-items:flex-end">${flt('Data della seduta',`<input type="date" class="inp" id="recDate" value="${date}">`)}${flt('Dove',`<div class="seg" role="group"><button type="button" data-recplace="campo" aria-pressed="${place==='campo'}">Campo</button><button type="button" data-recplace="palestra" aria-pressed="${place==='palestra'}">Palestra</button></div>`)}${P0?`<span class="soobj" style="--oc:${P0.c};align-self:center">${esc(mdForDate(date))} · ${esc(P0.l)}</span>`:''}</div>
+ <div class="card-b"><div class="rec-bar"><button type="button" class="btn pri rec-mic ${REC.on?'on':''}" id="recMic" ${recSR()?'':'disabled'}>${REC.on?'■ Ferma':'🎤 Detta'}</button><span class="rec-live" id="recLive">${recSR()?(REC.on?'Sto ascoltando…':'Tocca «Detta» e parla.'):'Il microfono dell’app non è disponibile qui: usa il microfono della tastiera del telefono (icona 🎤) oppure incolla la trascrizione.'}</span><button type="button" class="btn ghost sm" id="recClear">Pulisci</button></div>
+  <textarea class="inp rec-txt" id="recTxt" placeholder="Esempio: «Riscaldamento 12 minuti con mobilità. Forza: squat goblet 3 serie da 8 con 16 chili il gruppo 1 e 20 il gruppo 2, recupero 90 secondi. Nordic 2 serie da 5. Sprint 6 da 20 metri con recupero completo. Intermittente 15-15 al 100 per cento della VAM, 2 serie da 6 minuti.»">${esc(d.text||'')}</textarea>
+  <details class="rec-help"><summary>Hai già una nota vocale registrata?</summary><p><b>iPhone</b> — app Memo vocali: apri la registrazione, tocca l’icona della trascrizione (il fumetto), tieni premuto il testo → Copia, poi incollalo qui sopra.<br><b>Android</b> — app Registratore (Google): apri la registrazione → Trascrizione → Copia testo.<br>L’app non può trascrivere direttamente un file audio: serve il testo.</p></details>
+  <div class="row" style="gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center"><button type="button" class="btn pri" id="recGo">✦ Crea la seduta con l’AI</button><span class="hint" id="recMsg">${esc(S.ui.recMsg||'')}</span></div></div></section>`};
+function recSetLive(t){const el=document.getElementById('recLive');if(el)el.textContent=t}
+function recStart(){const SR=recSR();if(!SR)return;try{const sr=new SR();sr.lang='it-IT';sr.continuous=true;sr.interimResults=true;
+ sr.onresult=e=>{let fin='',inter='';for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal)fin+=r[0].transcript;else inter+=r[0].transcript}
+  const ta=document.getElementById('recTxt');if(fin&&ta){ta.value=(ta.value.replace(/\s+$/,'')+(ta.value.trim()?' ':'')+fin.trim()+'.').replace(/\.\./g,'.');recSave({text:ta.value})}recSetLive(inter?'… '+inter:'Sto ascoltando…')};
+ sr.onerror=e=>{const m={'not-allowed':'Il microfono non è permesso in questa vista: usa il microfono della tastiera (🎤) o apri l’app GitHub.','service-not-allowed':'Il riconoscimento vocale non è permesso qui: usa il microfono della tastiera (🎤).','network':'Per dettare serve la connessione.','no-speech':'Non ti sento: riprova.','audio-capture':'Nessun microfono trovato.'}[e.error];if(m){REC.keep=false;recSetLive(m)}};
+ sr.onend=()=>{if(REC.keep){try{sr.start();return}catch(_){}}REC.on=false;REC.sr=null;const b=document.getElementById('recMic');if(b){b.classList.remove('on');b.textContent='🎤 Detta'}};
+ sr.start();REC.sr=sr;REC.on=true;REC.keep=true;const b=document.getElementById('recMic');if(b){b.classList.add('on');b.textContent='■ Ferma'}recSetLive('Sto ascoltando…')}catch(e){recSetLive('Non riesco ad avviare il microfono: usa quello della tastiera (🎤).')}}
+function recStop(){REC.keep=false;try{REC.sr?.stop()}catch(e){}}
+async function recTextToPdf(text,date,place){const doc=PDFDoc();const f=pdfFrame(doc,{title:'Seduta registrata a voce',right1:`${DOW_FULL[s2d(date).getDay()]} ${dShort(date)}`,right2:place});
+ f.h2(`Seduta del ${DOW_FULL[s2d(date).getDay()]} ${dShort(date)} ${s2d(date).getFullYear()}`,`Data: ${date} · luogo: ${place} · ${mdForDate(date)}`);
+ const words=text.split(/\s+/);let line='';const lines=[];for(const w of words){if(pdfW(line+' '+w,9.5)>f.W){lines.push(line);line=w}else line=line?line+' '+w:w}if(line)lines.push(line);
+ for(const ln of lines){f.need(14);doc.text(f.M,f.y,ln,{size:9.5,color:PC.ink});f.y+=13}f.end();return new File([doc.bytes()],`Seduta registrata ${s2d(date).getDate()} ${['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'][s2d(date).getMonth()]} ${s2d(date).getFullYear()}.pdf`,{type:'application/pdf'})}
+async function recGo(){recStop();const ta=document.getElementById('recTxt');const text=(ta?.value||'').trim();const d=recDraft();const date=document.getElementById('recDate')?.value||d.date||d2s(new Date());const place=d.place||'campo';
+ if(text.length<20){toast('Racconta un po’ di più la seduta (almeno esercizi e dosi).');return}recSave({text,date});
+ const full=`Data della seduta: ${date} (${DOW_FULL[s2d(date).getDay()]}). Luogo: ${place}. Trascrizione dettata a voce dal preparatore (correggi parole riconosciute male, es. numeri scritti in lettere):\n${text}`;
+ let sample=null;try{sample=await window.claude?.use?.('sample')}catch(e){}
+ if(sample){S.ui.recMsg='L’AI sta creando la seduta…';render();const wk=weekOfDate(date);S.ui.atlImpWk=wk;
+  try{const data=await sample.json(atlImportPrompt(full,wk).replace('Leggi questo programma di allenamento atletico','Leggi questa descrizione a voce di una seduta di allenamento atletico').replace('TESTO DEL PDF:','TRASCRIZIONE:'),{modelTier:'default'});const res=[];
+   for(const s of data?.sessions||[]){if(!s||!Array.isArray(s.blocks))continue;res.push({id:atlId(),date:/^\d{4}-\d{2}-\d{2}$/.test(s.date||'')?s.date:date,dsrc:'pdf',title:String(s.title||'Seduta registrata'),place:s.place==='palestra'?'palestra':place,src:'voce',file:'registrazione vocale',
+    blocks:s.blocks.filter(b=>b&&ATL_C[b.cat]).map(b=>({cat:b.cat,ex:String(b.ex||''),fmt:ATL_FMT.some(x=>x[0]===b.fmt)?b.fmt:null,int:['bassa','media','alta'].includes(b.int)?b.int:null,rest:b.rest||'',note:b.note||'',rows:(Array.isArray(b.rows)&&b.rows.length?b.rows:[{g:'tutti'}]).map(r=>({g:String(r.g||'tutti'),sets:num(r.sets),reps:num(r.reps),kg:num(r.kg),rir:num(r.rir),pct:num(r.pct),dist:num(r.dist),dur:num(r.dur),cont:num(r.cont),note:r.note||''}))}))})}
+   if(!res.length){S.ui.recMsg='Non ho trovato esercizi nella descrizione: aggiungi esercizi e dosi.';render();return}
+   S.ui.atlImp={busy:false,msg:`Seduta creata dalla registrazione: controlla e salva (poi l’AI la valuta).`,res};S.ui.recMsg='';recSave({text:''});S.ui.tabs.atletica='importa';render();window.scrollTo(0,0)}
+  catch(e){S.ui.recMsg={not_granted:'Non hai autorizzato l’app a usare Claude.',rate_limited:'Limite di utilizzo raggiunto: riprova più tardi.'}[e?.code]||('Non sono riuscito a creare la seduta'+(e?.message?': '+e.message:'.'));render()}
+  return}
+ if(S.local&&typeof syLS==='function'&&syLS().id){try{const file=await recTextToPdf(full,date,place);await atlImport([file]);recSave({text:''});S.ui.recMsg='Inviata a Google Drive: l’AI la legge al prossimo giro (8, 10, 12, 14, 16, 18, 19, 20, 22) o quando apri Eleven Lab da claude.ai; poi «Aggiorna dati».';render()}catch(e){S.ui.recMsg='Invio non riuscito: '+(e?.message||e);render()}return}
+ S.ui.recMsg='Per creare la seduta serve l’AI: apri l’app da claude.ai, oppure collega Google Drive in Dati → Sincronizzazione.';render()}
+document.addEventListener('click',ev=>{const t=ev.target.closest('#recMic,#recClear,#recGo,[data-recplace]');if(!t)return;
+ if(t.id==='recMic'){REC.on?recStop():recStart();return}
+ if(t.id==='recClear'){recStop();recSave({text:''});const ta=document.getElementById('recTxt');if(ta)ta.value='';return}
+ if(t.dataset.recplace){recSave({place:t.dataset.recplace});render();return}
+ if(t.id==='recGo'){recGo();return}});
+document.addEventListener('input',ev=>{if(ev.target.id==='recTxt')recSave({text:ev.target.value})});
+document.addEventListener('change',ev=>{if(ev.target.id==='recDate'){recSave({date:ev.target.value});render()}});
+/* se si cambia pagina mentre detta, si ferma */
+{const _r=render;render=function(){if(REC.on&&!(S.ui.view==='atletica'&&curTab()==='registra'))recStop();const ta=document.getElementById('recTxt');if(ta)recSave({text:ta.value});return _r.apply(this,arguments)}}
+document.head.insertAdjacentHTML('beforeend',`<style id="rec25">
+.rec-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.rec-mic{min-width:120px}.rec-mic.on{background:var(--club)!important;border-color:var(--club)!important;animation:recp 1.4s ease-in-out infinite}
+@keyframes recp{50%{box-shadow:0 0 0 6px rgba(226,54,75,.25)}}
+.rec-live{flex:1 1 220px;font-size:13px;color:var(--ink-2)}
+.rec-txt{width:100%;min-height:200px;font-family:var(--f-body)!important;font-size:15px;line-height:1.5;padding:12px 14px;resize:vertical}
+.rec-help{margin-top:10px;font-size:13px;color:var(--ink-2)}.rec-help summary{cursor:pointer;font-weight:600;color:var(--ink)}.rec-help p{margin:8px 0 0;line-height:1.55}
+</style>`);
 
 /* ================= EVENTI ================= */
 function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++){o[ks[i]]=o[ks[i]]||{};o=o[ks[i]]}o[ks[ks.length-1]]=v}
