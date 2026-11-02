@@ -1,6 +1,6 @@
 // Eleven Lab: funziona anche offline dopo la prima apertura
-const CACHE='elevenlab-v63';
-const APP='./app.202611011836.js';
+const CACHE='elevenlab-v65';
+const APP='./app.202611021136.js';
 const SHELL=['./','./index.html',APP,'./manifest.webmanifest','./icon-192.png','./icon-512.png','./apple-touch-icon.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)));self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim()});
